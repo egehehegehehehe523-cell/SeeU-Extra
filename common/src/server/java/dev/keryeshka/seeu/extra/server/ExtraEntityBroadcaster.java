@@ -21,6 +21,7 @@ import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -35,6 +36,10 @@ import java.util.UUID;
 
 public final class ExtraEntityBroadcaster {
     private static final Logger LOGGER = LoggerFactory.getLogger("SeeU Extra");
+    // Last-known visuals bridge a chunk unload. These do NOT tick unloaded mobs.
+    // Bound both age and count to avoid retaining a world-sized entity history.
+    private static final long RETAIN_UNLOADED_TICKS = 20L * 60L * 10L;
+    private static final int MAX_RETAINED_PER_LEVEL = 1024;
     private static final Comparator<RankedCandidate> NEAREST_FIRST = Comparator
             .comparing(RankedCandidate::need)
             .thenComparingDouble(RankedCandidate::distanceSquared)
@@ -42,6 +47,7 @@ public final class ExtraEntityBroadcaster {
 
     private ExtraServerSettings settings;
     private final Set<String> quarantinedTypes = new HashSet<>();
+    private final Map<ServerLevel, Map<UUID, RetainedSnapshot>> retainedByLevel = new IdentityHashMap<>();
     private int elapsedTicks;
     private long sequence;
 
@@ -53,6 +59,7 @@ public final class ExtraEntityBroadcaster {
         this.settings = settings;
         this.elapsedTicks = 0;
         this.quarantinedTypes.clear();
+        this.retainedByLevel.clear();
     }
 
     public boolean isEnabled() {
@@ -63,9 +70,11 @@ public final class ExtraEntityBroadcaster {
         ExtraServerSettings currentSettings = settings;
         if (!currentSettings.enabled()) {
             elapsedTicks = 0;
+            retainedByLevel.clear();
             return;
         }
         if (sessions.isEmpty()) {
+            retainedByLevel.clear();
             return;
         }
 
@@ -77,8 +86,10 @@ public final class ExtraEntityBroadcaster {
 
         Map<ServerLevel, List<ExtraViewerSession>> sessionsByLevel = groupSessions(sessions);
         if (sessionsByLevel.isEmpty()) {
+            retainedByLevel.clear();
             return;
         }
+        retainedByLevel.keySet().removeIf(level -> !sessionsByLevel.containsKey(level));
 
         EntitySelector selector = currentSettings.selector();
         long packetSequence = nextSequence();
@@ -91,9 +102,16 @@ public final class ExtraEntityBroadcaster {
             if (optedInTypes.isEmpty()) {
                 continue;
             }
-            SpatialCellIndex<EntityCandidate> candidates = scanLevel(server, level, selector, optedInTypes);
             Map<UUID, EntitySnapshot> snapshotCache = new HashMap<>();
             Set<UUID> failedSnapshots = new HashSet<>();
+            Set<UUID> currentlyLoaded = new HashSet<>();
+            Map<UUID, RetainedSnapshot> retained = retainedByLevel.computeIfAbsent(
+                    level, ignored -> new HashMap<>());
+            pruneRetained(retained, level.getGameTime());
+            SpatialCellIndex<EntityCandidate> candidates = scanLevel(
+                    server, level, selector, optedInTypes, snapshotCache,
+                    failedSnapshots, currentlyLoaded, retained);
+            trimRetained(retained);
             String dimensionKey = level.dimension().location().toString();
             for (ExtraViewerSession session : entry.getValue()) {
                 sendSnapshot(
@@ -104,7 +122,9 @@ public final class ExtraEntityBroadcaster {
                         candidates,
                         snapshotCache,
                         failedSnapshots,
-                        currentSettings
+                        currentSettings,
+                        retained,
+                        currentlyLoaded
                 );
             }
         }
@@ -133,7 +153,11 @@ public final class ExtraEntityBroadcaster {
             MinecraftServer server,
             ServerLevel level,
             EntitySelector selector,
-            Set<String> optedInTypes
+            Set<String> optedInTypes,
+            Map<UUID, EntitySnapshot> snapshotCache,
+            Set<UUID> failedSnapshots,
+            Set<UUID> currentlyLoaded,
+            Map<UUID, RetainedSnapshot> retained
     ) {
         SpatialCellIndex<EntityCandidate> candidates = new SpatialCellIndex<>();
         for (Entity entity : level.getAllEntities()) {
@@ -157,7 +181,21 @@ public final class ExtraEntityBroadcaster {
                     typeId,
                     vanillaTrackingRangeBlocks(server, entity)
             );
+            UUID uuid = entity.getUUID();
+            currentlyLoaded.add(uuid);
             candidates.add(candidate, entity.getX(), entity.getY(), entity.getZ());
+            // Remember *before* vanilla stops tracking. Otherwise an entity
+            // whose chunk unloads immediately after the handoff is never cached.
+            try {
+                EntitySnapshot snapshot = createSnapshot(candidate);
+                snapshotCache.put(uuid, snapshot);
+                retained.put(uuid, new RetainedSnapshot(
+                        snapshot, level.getGameTime(), new WeakReference<>(entity)));
+            } catch (RuntimeException | LinkageError failure) {
+                failedSnapshots.add(uuid);
+                quarantine(typeId, failure);
+                retained.remove(uuid);
+            }
         }
         return candidates;
     }
@@ -182,7 +220,9 @@ public final class ExtraEntityBroadcaster {
             SpatialCellIndex<EntityCandidate> candidates,
             Map<UUID, EntitySnapshot> snapshotCache,
             Set<UUID> failedSnapshots,
-            ExtraServerSettings settings
+            ExtraServerSettings settings,
+            Map<UUID, RetainedSnapshot> retained,
+            Set<UUID> currentlyLoaded
     ) {
         ServerPlayer viewer = session.player();
         ClientOffer offer = session.offer();
@@ -221,6 +261,12 @@ public final class ExtraEntityBroadcaster {
                 }
                 snapshots.add(snapshot);
             }
+            // A mob can be removed from the loaded entity manager the moment
+            // its server chunk unloads. Preserve a bounded last-known visual
+            // while its source entity no longer ticks; never force-load chunks.
+            appendRetainedSnapshots(
+                    snapshots, viewer, offer, settings, retained, currentlyLoaded,
+                    minimumDistance, maximumDistance);
         }
 
         try {
@@ -234,6 +280,92 @@ public final class ExtraEntityBroadcaster {
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.warn("Failed to send an entity snapshot to {}", viewer.getGameProfile().getName(), failure);
         }
+    }
+
+    private void pruneRetained(Map<UUID, RetainedSnapshot> retained, long gameTick) {
+        retained.entrySet().removeIf(entry -> {
+            RetainedSnapshot cache = entry.getValue();
+            Entity source = cache.source().get();
+            if (gameTick - cache.lastSeenTick() > RETAIN_UNLOADED_TICKS) {
+                return true;
+            }
+            if (source == null) {
+                return false;
+            }
+            if (source.isRemoved()) {
+                // Keep only genuine unloads; do not display a dead or discarded
+                // boss as a ghost after it has been removed from the world.
+                return source.getRemovalReason() != Entity.RemovalReason.UNLOADED_TO_CHUNK;
+            }
+            return !source.isAlive();
+        });
+    }
+
+    private static void trimRetained(Map<UUID, RetainedSnapshot> retained) {
+        if (retained.size() <= MAX_RETAINED_PER_LEVEL) {
+            return;
+        }
+        List<Map.Entry<UUID, RetainedSnapshot>> oldestFirst =
+                new ArrayList<>(retained.entrySet());
+        oldestFirst.sort(Comparator.comparingLong(entry -> entry.getValue().lastSeenTick()));
+        for (int i = 0; i < oldestFirst.size() - MAX_RETAINED_PER_LEVEL; i++) {
+            retained.remove(oldestFirst.get(i).getKey());
+        }
+    }
+
+    private void appendRetainedSnapshots(
+            List<EntitySnapshot> snapshots,
+            ServerPlayer viewer,
+            ClientOffer offer,
+            ExtraServerSettings settings,
+            Map<UUID, RetainedSnapshot> retained,
+            Set<UUID> currentlyLoaded,
+            int minimumDistance,
+            int maximumDistance
+    ) {
+        if (snapshots.size() >= settings.entityCap()) {
+            return;
+        }
+        double minSq = square(minimumDistance);
+        List<RetainedSnapshot> available = new ArrayList<>();
+        for (Map.Entry<UUID, RetainedSnapshot> entry : retained.entrySet()) {
+            if (currentlyLoaded.contains(entry.getKey())) {
+                continue;
+            }
+            RetainedSnapshot cached = entry.getValue();
+            EntitySnapshot snapshot = cached.snapshot();
+            if (quarantinedTypes.contains(snapshot.typeId())
+                    || !settings.selector().selects(snapshot.typeId())) {
+                continue;
+            }
+            int typeMaximum = Math.min(maximumDistance, offer.maximumDistanceFor(snapshot.typeId()));
+            if (typeMaximum <= 0) {
+                continue;
+            }
+            Entity previousSource = cached.source().get();
+            if (previousSource != null && !previousSource.broadcastToPlayer(viewer)) {
+                continue;
+            }
+            double distanceSq = distanceSquared(viewer, snapshot);
+            if (distanceSq >= minSq && distanceSq <= square(typeMaximum)) {
+                available.add(cached);
+            }
+        }
+        available.sort(Comparator.comparingDouble(
+                cached -> distanceSquared(viewer, cached.snapshot())));
+        for (RetainedSnapshot cached : available) {
+            if (snapshots.size() >= settings.entityCap()) {
+                break;
+            }
+            snapshots.add(cached.snapshot());
+        }
+    }
+
+    private static double distanceSquared(ServerPlayer viewer, EntitySnapshot snapshot) {
+        double x = viewer.getX() - snapshot.x();
+        double y = viewer.getY() - snapshot.y();
+        double z = viewer.getZ() - snapshot.z();
+        return x * x + y * y + z * z;
     }
 
     private static List<EntityCandidate> selectNearest(
@@ -457,6 +589,11 @@ public final class ExtraEntityBroadcaster {
     }
 
     private record EntityCandidate(Entity entity, String typeId, int vanillaTrackingRangeBlocks) {
+    }
+
+    private record RetainedSnapshot(
+            EntitySnapshot snapshot, long lastSeenTick, WeakReference<Entity> source
+    ) {
     }
 
     private record RankedCandidate(
