@@ -127,7 +127,7 @@ public final class ExtraEntityRenderer {
 
                 Entity renderEntity;
                 Vec3 position;
-                // A client entity just beyond the normal chunk boundary
+                float renderYaw;                // A client entity just beyond the normal chunk boundary
                 // may exist but no longer receive ticks. Never use it as the
                 // distant visual there: its GeckoLib controller can freeze.
                 double vanillaChunkBoundary = minecraft.options.getEffectiveRenderDistance() * 16.0D;
@@ -136,12 +136,13 @@ public final class ExtraEntityRenderer {
                                 Math.abs(cameraPosition.x - vanillaEntity.getX()),
                                 Math.abs(cameraPosition.z - vanillaEntity.getZ())
                         ) <= vanillaChunkBoundary;
+                Entity liveKing = withinTickingClientArea && KING_TYPE.equals(snapshot.typeId())
+                        ? vanillaEntity : null;
                 if (withinTickingClientArea && !KING_TYPE.equals(snapshot.typeId())) {
-                    // When the native entity is available inside normal
-                    // chunks but fails the entity-distance render test, use
-                    // its real GeckoLib controller and synced Antarchy state.
+                    // For ordinary entities, retain vanilla's native controller.
                     renderEntity = vanillaEntity;
                     position = vanillaEntity.position();
+                    renderYaw = vanillaEntity.getYRot();
                 } else {
                     if (proxy == null || proxy.level != level || !proxy.typeId.equals(snapshot.typeId())) {
                         proxy = createProxy(level, snapshot);
@@ -149,20 +150,24 @@ public final class ExtraEntityRenderer {
                     }
                     proxy.lastSeenFrame = currentFrame;
                     proxy.lastSeenNanos = now;
-                    if (KING_TYPE.equals(snapshot.typeId()) && vanillaEntity != null) {
-                        // Antarchy synchronizes phase, flight, beam and glimmer data on the
-                        // real client entity. Mirror it without replacing the proxy/cache.
-                        syncNativeKingState(vanillaEntity, proxy.entity);
-                    }
                     // Use a monotonic client tick for the synthetic GeckoLib
                     // entity; snapshot ages can be stale or arrive in bursts.
-                    applyPosition(proxy.entity, state, viewer.tickCount);
+                    // Inside ticking chunks use the real King's coordinates;
+                    // distant snapshots can trail a charging boss by multiple
+                    // blocks, otherwise misaligning the visible model and hitbox.
+                    applyPosition(proxy.entity, state, viewer.tickCount, liveKing);
                     if (proxy.appliedRevision != state.revision()) {
                         applySnapshotState(proxy.entity, snapshot);
                         proxy.appliedRevision = state.revision();
                     }
+                    if (liveKing != null) {
+                        // Antarchy's synced royal data drives attack layers
+                        // and phases, while the proxy owns the visual controller.
+                        syncNativeKingState(liveKing, proxy.entity);
+                    }
                     renderEntity = proxy.entity;
-                    position = state.position();
+                    position = liveKing != null ? liveKing.position() : state.position();
+                    renderYaw = liveKing != null ? liveKing.getYRot() : state.bodyYaw();
                 }
 
                 boolean frustumVisible = shouldRenderBeyondVanillaDistance(renderEntity, frustum);
@@ -185,7 +190,7 @@ public final class ExtraEntityRenderer {
                             position.x - cameraPosition.x,
                             position.y - cameraPosition.y,
                             position.z - cameraPosition.z,
-                            state.bodyYaw(),
+                            renderYaw,
                             partialTick,
                             poseStack,
                             consumers,
@@ -323,8 +328,14 @@ public final class ExtraEntityRenderer {
         return new ProxyEntry(level, snapshot.typeId(), entity, animationCache);
     }
 
-    private static void applyPosition(Entity entity, InterpolatedEntityState state, int animationTick) {
-        Vec3 position = state.position();
+    private static void applyPosition(Entity entity, InterpolatedEntityState state,
+                                      int animationTick, Entity liveKing) {
+        Vec3 position = liveKing == null ? state.position() : liveKing.position();
+        float bodyYaw = liveKing == null ? state.bodyYaw()
+                : liveKing instanceof LivingEntity living ? living.yBodyRot : liveKing.getYRot();
+        float headYaw = liveKing == null ? state.headYaw()
+                : liveKing instanceof LivingEntity living ? living.getYHeadRot() : liveKing.getYRot();
+        float pitch = liveKing == null ? state.pitch() : liveKing.getXRot();
         entity.setOldPosAndRot();
         entity.xo = position.x;
         entity.yo = position.y;
@@ -332,16 +343,16 @@ public final class ExtraEntityRenderer {
         entity.xOld = position.x;
         entity.yOld = position.y;
         entity.zOld = position.z;
-        entity.moveTo(position.x, position.y, position.z, state.bodyYaw(), state.pitch());
-        entity.setYRot(state.bodyYaw());
-        entity.yRotO = state.bodyYaw();
-        entity.setXRot(state.pitch());
-        entity.xRotO = state.pitch();
+        entity.moveTo(position.x, position.y, position.z, bodyYaw, pitch);
+        entity.setYRot(bodyYaw);
+        entity.yRotO = bodyYaw;
+        entity.setXRot(pitch);
+        entity.xRotO = pitch;
         if (entity instanceof LivingEntity living) {
-            living.setYBodyRot(state.bodyYaw());
-            living.yBodyRotO = state.bodyYaw();
-            living.setYHeadRot(state.headYaw());
-            living.yHeadRotO = state.headYaw();
+            living.setYBodyRot(bodyYaw);
+            living.yBodyRotO = bodyYaw;
+            living.setYHeadRot(headYaw);
+            living.yHeadRotO = headYaw;
         }
         entity.tickCount = animationTick;
     }
