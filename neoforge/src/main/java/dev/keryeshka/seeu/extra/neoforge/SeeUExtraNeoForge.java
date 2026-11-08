@@ -20,6 +20,9 @@ public final class SeeUExtraNeoForge {
         // Still allow users to disable the override via kingIdleWanderFallback=false.
         KingWanderOptions.globalRoam = config.kingGlobalRoam
                 || (config.persistentKingSimulation && config.kingIdleWanderFallback);
+        KingWanderOptions.globalBossBar = config.persistentKingSimulation
+                && config.settings().enabled()
+                && config.settings().selector().selects("antarchy:king");
         endpoint = new SeeUExtraServerEndpoint(config, new NeoForgeKingTicketAccess());
         SeeUServerAddons.getInstance().register(SeeUExtra.DESCRIPTOR, endpoint);
         NeoForge.EVENT_BUS.addListener(this::onServerTick);

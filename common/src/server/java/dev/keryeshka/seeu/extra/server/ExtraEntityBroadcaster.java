@@ -112,7 +112,7 @@ public final class ExtraEntityBroadcaster {
         }
         // Continue syncing the offloaded King's boss bar even without
         // normal entity snapshots; clear it when viewing is disabled.
-        persistentKing.updateBossBars(sessions, currentSettings);
+        persistentKing.updateBossBars(server, currentSettings);
         if (!currentSettings.enabled()) {
             elapsedTicks = 0;
             kingTickets.clear();

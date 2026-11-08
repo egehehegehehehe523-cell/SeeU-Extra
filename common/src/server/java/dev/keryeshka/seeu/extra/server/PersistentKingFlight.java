@@ -25,7 +25,6 @@ import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -118,67 +117,67 @@ public final class PersistentKingFlight {
     }
 
     /**
-     * A lightweight boss event for an offloaded King. This does not instantiate,
-     * tick or load the real entity. Visibility uses the exact viewer opt-in and
-     * range agreed by SeeU Extra, including per-entity distance limits.
+     * One dimension-wide boss event with a stable identity across native and
+     * offloaded flight. It is independent of chunk tracking, render distance,
+     * client LOD opt-in, and whether the King currently has a target.
+     *
+     * The native Antarchy event keeps its internal player list for combat and
+     * sounds but is hidden while this event is enabled (Antarchy-only mixin).
      */
-    public void updateBossBars(
-            Collection<? extends ExtraViewerSession> sessions, ExtraServerSettings settings
-    ) {
-        Map<ServerLevel, Set<ServerPlayer>> wanted = new IdentityHashMap<>();
+    public void updateBossBars(MinecraftServer server, ExtraServerSettings settings) {
+        Set<ServerLevel> present = java.util.Collections.newSetFromMap(
+                new IdentityHashMap<>());
         if (enabled && settings.enabled() && settings.selector().selects(KING_TYPE)) {
-            for (ExtraViewerSession session : sessions) {
-                if (session == null || session.offer() == null || !session.offer().enabled()) {
-                    continue;
-                }
-                ServerPlayer player = session.player();
-                if (player == null || player.isRemoved()) {
-                    continue;
-                }
-                int maximum = Math.min(settings.maximumDistanceBlocks(),
-                        Math.min(session.offer().maximumDistanceBlocks(),
-                                session.offer().maximumDistanceFor(KING_TYPE)));
-                int minimum = Math.max(settings.minimumDistanceBlocks(),
-                        session.offer().minimumDistanceBlocks());
-                if (maximum <= 0 || minimum > maximum) {
-                    continue;
-                }
-                ServerLevel level = player.serverLevel();
+            for (ServerLevel level : server.getAllLevels()) {
                 KingData data = state(level);
-                if (!data.offloaded || data.base == null) {
-                    continue;
+                float health;
+                if (data.offloaded && data.base != null) {
+                    health = data.healthFraction;
+                } else {
+                    UUID known = lastLiveKing.get(level);
+                    Entity entity = known == null ? null : level.getEntity(known);
+                    if (!(entity instanceof Mob king) || !isKing(king)) {
+                        continue;
+                    }
+                    health = king.getHealth() / Math.max(1.0F, king.getMaxHealth());
                 }
-                double dx = player.getX() - data.x;
-                double dy = player.getY() - data.y;
-                double dz = player.getZ() - data.z;
-                double distanceSquared = dx * dx + dy * dy + dz * dz;
-                if (distanceSquared >= (double) minimum * minimum
-                        && distanceSquared <= (double) maximum * maximum) {
-                    wanted.computeIfAbsent(level, ignored -> new HashSet<>()).add(player);
+                present.add(level);
+                ServerBossEvent bar = distantBossBars.computeIfAbsent(level,
+                        ignored -> new ServerBossEvent(
+                                Component.translatable("entity.antarchy.king"),
+                                BossEvent.BossBarColor.YELLOW,
+                                BossEvent.BossBarOverlay.PROGRESS));
+                bar.setProgress(Mth.clamp(health, 0.0F, 1.0F));
+
+                // All players in the King's dimension can see the global boss
+                // status. Never use the entity tracking or SeeU viewer list.
+                Set<ServerPlayer> wanted = new HashSet<>();
+                for (ServerPlayer player : level.players()) {
+                    if (!player.isRemoved() && !player.isSpectator()) {
+                        wanted.add(player);
+                        if (!bar.getPlayers().contains(player)) {
+                            bar.addPlayer(player);
+                        }
+                    }
+                }
+                for (ServerPlayer tracked : Set.copyOf(bar.getPlayers())) {
+                    if (!wanted.contains(tracked)) {
+                        bar.removePlayer(tracked);
+                    }
                 }
             }
         }
-        for (Map.Entry<ServerLevel, ServerBossEvent> entry : distantBossBars.entrySet()) {
-            Set<ServerPlayer> expected = wanted.getOrDefault(entry.getKey(), Set.of());
-            for (ServerPlayer current : Set.copyOf(entry.getValue().getPlayers())) {
-                if (!expected.contains(current)) {
-                    entry.getValue().removePlayer(current);
-                }
+        // Only destruction, changing dimensions or disabling the feature
+        // removes this event; native/offloaded transitions never do.
+        distantBossBars.entrySet().removeIf(entry -> {
+            if (present.contains(entry.getKey())) {
+                return false;
             }
-        }
-        for (Map.Entry<ServerLevel, Set<ServerPlayer>> entry : wanted.entrySet()) {
-            ServerBossEvent bar = distantBossBars.computeIfAbsent(entry.getKey(),
-                    ignored -> new ServerBossEvent(
-                            Component.translatable("entity.antarchy.king"),
-                            BossEvent.BossBarColor.YELLOW, BossEvent.BossBarOverlay.PROGRESS));
-            bar.setProgress(state(entry.getKey()).healthFraction);
-            for (ServerPlayer player : entry.getValue()) {
-                if (!bar.getPlayers().contains(player)) {
-                    bar.addPlayer(player);
-                }
+            for (ServerPlayer tracked : Set.copyOf(entry.getValue().getPlayers())) {
+                entry.getValue().removePlayer(tracked);
             }
-        }
-        distantBossBars.entrySet().removeIf(entry -> entry.getValue().getPlayers().isEmpty());
+            return true;
+        });
     }
 
     private static KingData state(ServerLevel level) {
