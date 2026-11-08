@@ -17,10 +17,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Idle flight for Antarchy's Queen that does not query distant chunk terrain.
- * The real Queen still needs ticqueen chunks; this is NOT off-chunk simulation.
+ * The real Queen still needs ticking chunks; this is NOT off-chunk simulation.
  *
  * The native Queen patrol already issues MoveControl waypoints; adding more
- * waypoints can make the huge boss turn without maqueen forward progress.
+ * waypoints can make the huge boss turn without making forward progress.
  * Use gently steered, collision-aware displacement when idle instead.
  * Combat and target acquisition always retain control.
  */
@@ -49,7 +49,9 @@ public abstract class QueenIdleWanderMixin implements RoyalFlightSteeringAccess 
     private void seeuExtra$beginIdleFlight(CallbackInfo ci) {
         Mob queen = (Mob) (Object) this;
         if (!WorldBossesOptions.queenRoam || !(queen.level() instanceof ServerLevel)
-                || !queen.isAlive() || queen.isNoAi() || queen.getTarget() != null) {
+                || !queen.isAlive() || queen.isNoAi() || queen.getTarget() != null
+                || (queen instanceof dev.keryeshka.worldbosses.client.RoyalFlyingVisualAccess flying
+                    && !flying.seeuExtra$isRoyalFlying())) {
             return;
         }
         queen.getNavigation().stop();
@@ -154,7 +156,7 @@ public abstract class QueenIdleWanderMixin implements RoyalFlightSteeringAccess 
 
         // Face the intended heading first, then move along the actual facing.
         // Previously displacement was applied immediately while the body only
-        // rotated 4 degrees/tick, maqueen the Queen appear to fly backwards.
+        // rotated 4 degrees/tick, making the Queen appear to fly backwards.
         float wantedYaw = (float) (Mth.atan2(-seeuExtra$heading.x,
                 seeuExtra$heading.z) * Mth.RAD_TO_DEG);
         float yaw = Mth.approachDegrees(queen.getYRot(), wantedYaw, 10.0F);
