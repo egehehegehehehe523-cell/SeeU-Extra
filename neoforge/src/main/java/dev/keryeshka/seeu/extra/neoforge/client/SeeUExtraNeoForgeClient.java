@@ -4,6 +4,7 @@ import dev.keryeshka.seeu.extra.SeeUExtra;
 import dev.keryeshka.seeu.extra.client.ExtraEntityRenderer;
 import dev.keryeshka.seeu.extra.client.ExtraEntityTracker;
 import dev.keryeshka.seeu.extra.client.SeeUExtraClientConfig;
+import dev.keryeshka.seeu.extra.client.SeeUExtraConfigScreen;
 import dev.keryeshka.seeu.extra.client.SeeUExtraClientEndpoint;
 import dev.keryeshka.seeu.extra.protocol.ClientOffer;
 import dev.keryeshka.seeu.extra.protocol.ExtraPacketCodec;
@@ -15,6 +16,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.minecraft.client.Minecraft;
 
 import java.util.function.Supplier;
@@ -24,9 +26,11 @@ import java.util.function.Supplier;
 public final class SeeUExtraNeoForgeClient {
     private static SeeUExtraClientEndpoint endpoint;
     private static ExtraEntityRenderer renderer;
+    private static SeeUExtraClientConfig configuration;
 
     public SeeUExtraNeoForgeClient() {
         SeeUExtraClientConfig config = SeeUExtraClientConfig.load(FMLPaths.CONFIGDIR.get());
+        configuration = config;
         ExtraEntityTracker tracker = new ExtraEntityTracker();
         renderer = new ExtraEntityRenderer(tracker);
         Supplier<ClientOffer> offerSupplier = config::offer;
@@ -36,6 +40,16 @@ public final class SeeUExtraNeoForgeClient {
                 () -> ExtraPacketCodec.encodeClientOffer(offerSupplier.get()),
                 endpoint
         );
+    }
+
+    @SubscribeEvent
+    public static void onClientTick(ClientTickEvent.Post event) {
+        var client = Minecraft.getInstance();
+        if (configuration != null) {
+            while (SeeUExtraNeoForgeKeys.CONFIGURE.consumeClick()) {
+                client.setScreen(new SeeUExtraConfigScreen(client.screen, configuration));
+            }
+        }
     }
 
     @SubscribeEvent
