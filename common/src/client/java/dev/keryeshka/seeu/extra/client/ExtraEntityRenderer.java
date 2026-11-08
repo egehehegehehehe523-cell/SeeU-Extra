@@ -31,11 +31,15 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class ExtraEntityRenderer {
     private static final Logger LOGGER = LoggerFactory.getLogger("SeeU Extra");
     private static final AtomicInteger NEXT_PROXY_ID = new AtomicInteger(1_100_000_000);
+    private static final String KING_TYPE = "antarchy:king";
+    // Preserve the controller across brief native-tracking gaps.
+    private static final long KING_PROXY_REUSE_NANOS = TimeUnit.MINUTES.toNanos(2);
 
     private final ExtraEntityTracker tracker;
     private final Map<UUID, ProxyEntry> proxies = new HashMap<>();
@@ -113,6 +117,7 @@ public final class ExtraEntityRenderer {
                     // Do not discard the proxy while vanilla is active; a
                     // transient re-tracking gap should reuse its controller.
                     proxy.lastSeenFrame = currentFrame;
+                    proxy.lastSeenNanos = now;
                 }
                 if (vanillaCovered) {
                     continue;
@@ -129,7 +134,7 @@ public final class ExtraEntityRenderer {
                                 Math.abs(cameraPosition.x - vanillaEntity.getX()),
                                 Math.abs(cameraPosition.z - vanillaEntity.getZ())
                         ) <= vanillaChunkBoundary;
-                if (withinTickingClientArea) {
+                if (withinTickingClientArea && !KING_TYPE.equals(snapshot.typeId())) {
                     // When the native entity is available inside normal
                     // chunks but fails the entity-distance render test, use
                     // its real GeckoLib controller and synced Antarchy state.
@@ -141,6 +146,7 @@ public final class ExtraEntityRenderer {
                         proxies.put(snapshot.uuid(), proxy);
                     }
                     proxy.lastSeenFrame = currentFrame;
+                    proxy.lastSeenNanos = now;
                     // Use a monotonic client tick for the synthetic GeckoLib
                     // entity; snapshot ages can be stale or arrive in bursts.
                     applyPosition(proxy.entity, state, viewer.tickCount);
@@ -194,7 +200,12 @@ public final class ExtraEntityRenderer {
             }
         }
 
-        proxies.values().removeIf(proxy -> proxy.lastSeenFrame != currentFrame);
+        // Keep one dormant King proxy across native handoffs; only tracked
+        // snapshots actually render, so this cannot duplicate a real boss.
+        // World changes and disconnects still clear the cache immediately.
+        proxies.values().removeIf(proxy -> proxy.lastSeenFrame != currentFrame
+                && (!KING_TYPE.equals(proxy.typeId)
+                        || now - proxy.lastSeenNanos > KING_PROXY_REUSE_NANOS));
     }
 
     private static boolean isCoveredByVanilla(
@@ -342,6 +353,7 @@ public final class ExtraEntityRenderer {
         private final Entity entity;
         private long appliedRevision = Long.MIN_VALUE;
         private long lastSeenFrame;
+        private long lastSeenNanos;
 
         private ProxyEntry(ClientLevel level, String typeId, Entity entity) {
             this.level = level;
