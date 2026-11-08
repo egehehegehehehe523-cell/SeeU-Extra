@@ -7,6 +7,7 @@ import dev.keryeshka.seeu.extra.protocol.EntityFlags;
 import dev.keryeshka.seeu.extra.protocol.EntitySnapshot;
 import dev.keryeshka.seeu.extra.protocol.EntitySnapshotPacket;
 import dev.keryeshka.seeu.extra.protocol.EquipmentSnapshot;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -17,6 +18,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,12 +42,15 @@ public final class ExtraEntityBroadcaster {
     // Bound both age and count to avoid retaining a world-sized entity history.
     private static final long RETAIN_UNLOADED_TICKS = 20L * 60L * 10L;
     private static final int MAX_RETAINED_PER_LEVEL = 1024;
+    private static final String KING_TYPE = "antarchy:king";
     private static final Comparator<RankedCandidate> NEAREST_FIRST = Comparator
             .comparing(RankedCandidate::need)
             .thenComparingDouble(RankedCandidate::distanceSquared)
             .thenComparing(candidate -> candidate.candidate().entity().getUUID());
 
     private ExtraServerSettings settings;
+    private final boolean liveKingTicking;
+    private final DistantKingTickManager kingTickets = new DistantKingTickManager();
     private final Set<String> quarantinedTypes = new HashSet<>();
     private final Set<String> loggedRetainedTypes = new HashSet<>();
     private final Map<ServerLevel, Map<UUID, RetainedSnapshot>> retainedByLevel = new IdentityHashMap<>();
@@ -53,7 +58,12 @@ public final class ExtraEntityBroadcaster {
     private long sequence;
 
     public ExtraEntityBroadcaster(ExtraServerSettings settings) {
+        this(settings, false);
+    }
+
+    public ExtraEntityBroadcaster(ExtraServerSettings settings, boolean liveKingTicking) {
         this.settings = settings;
+        this.liveKingTicking = liveKingTicking;
     }
 
     public void updateSettings(ExtraServerSettings settings) {
@@ -62,6 +72,7 @@ public final class ExtraEntityBroadcaster {
         this.quarantinedTypes.clear();
         this.loggedRetainedTypes.clear();
         this.retainedByLevel.clear();
+        this.kingTickets.clear();
     }
 
     public boolean isEnabled() {
@@ -72,13 +83,17 @@ public final class ExtraEntityBroadcaster {
         ExtraServerSettings currentSettings = settings;
         if (!currentSettings.enabled()) {
             elapsedTicks = 0;
+            kingTickets.clear();
             retainedByLevel.clear();
             return;
         }
         if (sessions.isEmpty()) {
+            kingTickets.clear();
             retainedByLevel.clear();
             return;
         }
+
+        updateKingTickets(server, sessions, currentSettings);
 
         elapsedTicks++;
         if (elapsedTicks < currentSettings.updateIntervalTicks()) {
@@ -88,6 +103,7 @@ public final class ExtraEntityBroadcaster {
 
         Map<ServerLevel, List<ExtraViewerSession>> sessionsByLevel = groupSessions(sessions);
         if (sessionsByLevel.isEmpty()) {
+            kingTickets.clear();
             retainedByLevel.clear();
             return;
         }
@@ -130,6 +146,76 @@ public final class ExtraEntityBroadcaster {
                 );
             }
         }
+    }
+
+
+    /**
+     * Keep Antarchy's own AI ticking, rather than faking movement on the
+     * client. One temporary entity-ticking ticket is allowed per dimension,
+     * and only while somebody explicitly opts into viewing the distant King.
+     * Previously observed unloaded Kings can be brought back by the ticket.
+     */
+    private void updateKingTickets(
+            MinecraftServer server,
+            Collection<? extends ExtraViewerSession> sessions,
+            ExtraServerSettings currentSettings
+    ) {
+        if (!liveKingTicking || !currentSettings.selector().selects(KING_TYPE)) {
+            kingTickets.clear();
+            return;
+        }
+
+        Map<ServerLevel, ChunkPos> wanted = new IdentityHashMap<>();
+        double naturallyTickingDistance = server.getPlayerList().getSimulationDistance() * 16.0D;
+        double naturallyTickingDistanceSquared = naturallyTickingDistance * naturallyTickingDistance;
+        for (ExtraViewerSession session : sessions) {
+            ClientOffer offer = session.offer();
+            ServerPlayer viewer = session.player();
+            if (offer == null || !offer.enabled() || viewer == null || viewer.isRemoved()) {
+                continue;
+            }
+            int maximum = Math.min(currentSettings.maximumDistanceBlocks(),
+                    offer.maximumDistanceFor(KING_TYPE));
+            if (maximum <= 0 || wanted.containsKey(viewer.serverLevel())) {
+                continue;
+            }
+            Map<UUID, RetainedSnapshot> snapshots = retainedByLevel.get(viewer.serverLevel());
+            if (snapshots == null) {
+                continue;
+            }
+
+            for (RetainedSnapshot cached : snapshots.values()) {
+                EntitySnapshot snapshot = cached.snapshot();
+                if (!KING_TYPE.equals(snapshot.typeId())) {
+                    continue;
+                }
+                Entity source = cached.source().get();
+                if (source != null && (source.getRemovalReason() != null
+                        && source.getRemovalReason() != Entity.RemovalReason.UNLOADED_TO_CHUNK
+                        || !source.isRemoved() && !source.isAlive())) {
+                    continue;
+                }
+                // A live source is more accurate than the last sent packet;
+                // an unloaded source only contributes its retained position.
+                boolean live = source != null && !source.isRemoved()
+                        && source.level() == viewer.serverLevel();
+                double x = live ? source.getX() : snapshot.x();
+                double y = live ? source.getY() : snapshot.y();
+                double z = live ? source.getZ() : snapshot.z();
+                double dx = x - viewer.getX();
+                double dy = y - viewer.getY();
+                double dz = z - viewer.getZ();
+                double distanceSquared = dx * dx + dy * dy + dz * dz;
+                if (distanceSquared <= naturallyTickingDistanceSquared
+                        || distanceSquared > (double) maximum * maximum) {
+                    continue;
+                }
+                wanted.put(viewer.serverLevel(), new ChunkPos(BlockPos.containing(x, y, z)));
+                break;
+            }
+        }
+
+        kingTickets.update(wanted);
     }
 
     private static Map<ServerLevel, List<ExtraViewerSession>> groupSessions(
