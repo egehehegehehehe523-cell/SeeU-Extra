@@ -22,7 +22,7 @@ public final class SeeUExtraServerEndpoint implements ServerAddonEndpoint {
     private final Map<UUID, OpenSession> sessions = new HashMap<>();
 
     public SeeUExtraServerEndpoint(SeeUExtraServerConfig config) {
-        this.broadcaster = new ExtraEntityBroadcaster(config.settings());
+        this.broadcaster = new ExtraEntityBroadcaster(config.settings(), config.liveKingTicking);
     }
 
     @Override
@@ -73,13 +73,7 @@ public final class SeeUExtraServerEndpoint implements ServerAddonEndpoint {
     }
 
     public void tick(MinecraftServer server) {
-        if (!broadcaster.isEnabled()) {
-            return;
-        }
         sessions.entrySet().removeIf(entry -> !entry.getValue().session().isOpen());
-        if (sessions.isEmpty()) {
-            return;
-        }
         List<ExtraViewerSession> viewers = new ArrayList<>(sessions.size());
         for (OpenSession open : sessions.values()) {
             if (!open.session().isOpen()) {
