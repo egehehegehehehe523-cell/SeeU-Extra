@@ -139,7 +139,39 @@ final class DistantKingDecrees {
         }
     }
 
-    /** Called before Antarchy's real King resumes combat AI. */
+    /**
+     * Native King -> persistent flight. Preserve Antarchy's existing cooldown
+     * instead of letting the distant decree timer begin from zero.
+     */
+    void inheritNativeCooldown(ServerLevel level, int remainingTicks) {
+        long now = level.getGameTime();
+        State state = states.computeIfAbsent(level,
+                ignored -> new State(now + INITIAL_DELAY));
+        state.cooldownUntil = Math.max(state.cooldownUntil,
+                now + Math.max(0, remainingTicks));
+    }
+
+    /**
+     * Persistent flight -> native King. An active distant proclamation ends
+     * before the real entity becomes authoritative, and its recovery carries
+     * into the native combat cooldown. No two decrees can be proclaimed at once.
+     */
+    int handoffToNative(ServerLevel level) {
+        State state = states.remove(level);
+        if (state == null) {
+            return 0;
+        }
+        long now = level.getGameTime();
+        boolean wasActive = state.active != null;
+        finish(state);
+        long remaining = Math.max(0L, state.cooldownUntil - now);
+        if (wasActive) {
+            remaining = Math.max(remaining, REPEAT_COOLDOWN_TICKS);
+        }
+        return (int) Math.min(Integer.MAX_VALUE, remaining);
+    }
+
+    /** Called after the real King resumes combat AI or on deactivation. */
     void clear(ServerLevel level) {
         State state = states.remove(level);
         if (state != null) {
