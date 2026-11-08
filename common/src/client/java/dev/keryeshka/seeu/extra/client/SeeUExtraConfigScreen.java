@@ -28,6 +28,7 @@ public final class SeeUExtraConfigScreen extends Screen {
     private int visibleRows;
     private int listLeft;
     private int listWidth;
+    private EditBox searchBox;
 
     public SeeUExtraConfigScreen(Screen parent, SeeUExtraClientConfig config) {
         super(Component.literal("SeeU Extra — Distant Entities"));
@@ -62,7 +63,7 @@ public final class SeeUExtraConfigScreen extends Screen {
                 refresh();
             }
         });
-        addRenderableWidget(search);
+        searchBox = addRenderableWidget(search);
 
         List<EntityRow> filtered = filteredTypes();
         int pages = Math.max(1, (filtered.size() + visibleRows - 1) / visibleRows);
@@ -114,8 +115,13 @@ public final class SeeUExtraConfigScreen extends Screen {
     }
 
     private void refresh() {
+        boolean searchFocused = searchBox != null && searchBox.isFocused();
         clearWidgets();
         init();
+        if (searchFocused) {
+            setFocused(searchBox);
+            searchBox.setFocused(true);
+        }
     }
 
     private List<EntityRow> filteredTypes() {
