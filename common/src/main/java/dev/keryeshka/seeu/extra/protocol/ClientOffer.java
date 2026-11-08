@@ -4,6 +4,8 @@ import dev.keryeshka.seeu.extra.ResourceIdentifier;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.TreeMap;
 
 public record ClientOffer(
@@ -12,13 +14,20 @@ public record ClientOffer(
         int maximumDistanceBlocks,
         int minimumDistanceBlocks,
         int entityViewScaleQ10,
-        Map<String, Integer> entityDistances
+        Map<String, Integer> entityDistances,
+        Set<String> persistentAnimations
 ) {
+    public ClientOffer(int protocolVersion, boolean enabled, int maximumDistanceBlocks,
+                       int minimumDistanceBlocks, int entityViewScaleQ10,
+                       Map<String, Integer> entityDistances) {
+        this(protocolVersion, enabled, maximumDistanceBlocks, minimumDistanceBlocks,
+                entityViewScaleQ10, entityDistances, Set.of());
+    }
     // Kept for source compatibility with existing API users and tests.
     public ClientOffer(int protocolVersion, boolean enabled, int maximumDistanceBlocks,
                        int minimumDistanceBlocks, int entityViewScaleQ10) {
         this(protocolVersion, enabled, maximumDistanceBlocks, minimumDistanceBlocks,
-                entityViewScaleQ10, Map.of());
+                entityViewScaleQ10, Map.of(), Set.of());
     }
 
     public ClientOffer {
@@ -49,6 +58,16 @@ public record ClientOffer(
             normalized.put(key, range);
         }
         entityDistances = Collections.unmodifiableMap(normalized);
+        if (persistentAnimations == null || persistentAnimations.size() > ExtraProtocol.MAX_CONFIGURED_ENTITY_TYPES) {
+            throw new IllegalArgumentException("Too many persistent animation types");
+        }
+        TreeSet<String> animationTypes = new TreeSet<>();
+        for (String type : persistentAnimations) {
+            if (!normalized.containsKey(type)) throw new IllegalArgumentException(
+                    "Animation type is not enabled: " + type);
+            animationTypes.add(type);
+        }
+        persistentAnimations = Collections.unmodifiableSet(animationTypes);
     }
 
     // Absent type means opt-out, not a fallback to the global maximum.

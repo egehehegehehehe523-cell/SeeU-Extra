@@ -46,7 +46,7 @@ public final class SeeUExtraConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        listWidth = Math.min(620, width - 24);
+        listWidth = Math.min(730, width - 24);
         listLeft = (width - listWidth) / 2;
         visibleRows = Math.max(2, Math.min(8, (height - 148) / 25));
         int top = 63;
@@ -79,8 +79,17 @@ public final class SeeUExtraConfigScreen extends Screen {
                     button -> {
                         config.setEntityEnabled(row.id(), !config.isEntityEnabled(row.id()));
                         refresh();
-                    }).bounds(listLeft + listWidth - 165, y, 53, 20).build());
-            EditBox distance = new EditBox(font, listLeft + listWidth - 106, y, 102, 20,
+                    }).bounds(listLeft + listWidth - 236, y, 53, 20).build());
+            // This setting keeps the GeckoLib proxy controller alive across
+            // native-chunk handoffs. Mods with a custom native renderer can
+            // register an adapter to suppress duplicate native draws.
+            boolean anim = config.hasPersistentAnimation(row.id());
+            addRenderableWidget(Button.builder(Component.literal(anim ? "Anim ON" : "Anim OFF"),
+                    button -> {
+                        config.setPersistentAnimation(row.id(), !anim);
+                        refresh();
+                    }).bounds(listLeft + listWidth - 179, y, 73, 20).build()).active = active;
+            EditBox distance = new EditBox(font, listLeft + listWidth - 102, y, 98, 20,
                     Component.literal("Distance in blocks for " + row.id()));
             distance.setMaxLength(5);
             distance.setValue(Integer.toString(active ? config.entityDistance(row.id()) : config.defaultEntityDistance()));
@@ -138,7 +147,7 @@ public final class SeeUExtraConfigScreen extends Screen {
         renderBackground(graphics, mouseX, mouseY, partialTick);
         super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(font, title, width / 2, 13, 0xFFFFFF);
-        graphics.drawString(font, "Every entity is OFF until enabled. Distances are in blocks.", listLeft + 4, 26, 0xAFAFAF, false);
+        graphics.drawString(font, "Opt in by entity. Anim ON preserves GeckoLib controllers; Voxy depth is automatic.", listLeft + 4, 26, 0xAFAFAF, false);
         List<EntityRow> filtered = filteredTypes();
         int start = page * visibleRows;
         int end = Math.min(start + visibleRows, filtered.size());
@@ -146,7 +155,7 @@ public final class SeeUExtraConfigScreen extends Screen {
             EntityRow row = filtered.get(i);
             String label = row.name().equalsIgnoreCase(row.id()) ? row.id()
                     : row.name() + " (" + row.id() + ")";
-            int maxTextWidth = listWidth - 174;
+            int maxTextWidth = listWidth - 245;
             if (font.width(label) > maxTextWidth) {
                 label = font.plainSubstrByWidth(label, Math.max(20, maxTextWidth - font.width("..."))) + "...";
             }

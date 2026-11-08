@@ -1,7 +1,7 @@
 package dev.keryeshka.seeu.extra.protocol;
 
 public final class ExtraProtocol {
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
     public static final int MAX_SNAPSHOTS = 1024;
     public static final int MAX_CONFIGURED_ENTITY_TYPES = 512;
     public static final int MAXIMUM_DISTANCE_BLOCKS = 32_768;

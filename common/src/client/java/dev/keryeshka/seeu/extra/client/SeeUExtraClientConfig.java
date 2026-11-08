@@ -13,18 +13,21 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.TreeMap;
 
 public final class SeeUExtraClientConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String FILE_NAME = "seeu-extra-client.json";
 
-    public int configVersion = 2;
+    public int configVersion = 3;
     public boolean enabled = true;
     public int maximumDistanceBlocks = ExtraServerSettings.DEFAULT_MAXIMUM_DISTANCE_BLOCKS;
     public int minimumDistanceBlocks = ExtraServerSettings.DEFAULT_MINIMUM_DISTANCE_BLOCKS;
     // An absent entity ID is disabled. This map contains ONLY opted-in entity types.
     public Map<String, Integer> entityDistances = new TreeMap<>();
+    public Set<String> persistentAnimations = new TreeSet<>();
     private transient Path configPath;
 
     public static SeeUExtraClientConfig load(Path configDirectory) {
@@ -62,6 +65,17 @@ public final class SeeUExtraClientConfig {
         return entityDistances != null && entityDistances.containsKey(typeId);
     }
 
+    public boolean hasPersistentAnimation(String typeId) {
+        return persistentAnimations != null && persistentAnimations.contains(typeId);
+    }
+
+    public void setPersistentAnimation(String typeId, boolean enabled) {
+        if (!isEntityEnabled(typeId)) return;
+        if (persistentAnimations == null) persistentAnimations = new TreeSet<>();
+        if (enabled) persistentAnimations.add(typeId);
+        else persistentAnimations.remove(typeId);
+    }
+
     public int entityDistance(String typeId) {
         return entityDistances == null ? 0 : entityDistances.getOrDefault(typeId, 0);
     }
@@ -80,6 +94,7 @@ public final class SeeUExtraClientConfig {
             }
         } else {
             entityDistances.remove(typeId);
+            persistentAnimations.remove(typeId);
         }
     }
 
@@ -102,12 +117,13 @@ public final class SeeUExtraClientConfig {
                 maximumDistanceBlocks,
                 minimumDistanceBlocks,
                 entityViewScaleQ10,
-                entityDistances
+                entityDistances,
+                persistentAnimations
         );
     }
 
     private void sanitize() {
-        configVersion = 2;
+        configVersion = 3;
         maximumDistanceBlocks = clamp(maximumDistanceBlocks, 0, ExtraProtocol.MAXIMUM_DISTANCE_BLOCKS);
         minimumDistanceBlocks = clamp(minimumDistanceBlocks, 0, maximumDistanceBlocks);
         Map<String, Integer> normalized = new TreeMap<>();
@@ -124,6 +140,13 @@ public final class SeeUExtraClientConfig {
             }
         }
         entityDistances = normalized;
+        Set<String> validatedAnimations = new TreeSet<>();
+        if (persistentAnimations != null) {
+            for (String type : persistentAnimations) {
+                if (normalized.containsKey(type)) validatedAnimations.add(type);
+            }
+        }
+        persistentAnimations = validatedAnimations;
     }
 
     private static int clamp(int value, int minimum, int maximum) {

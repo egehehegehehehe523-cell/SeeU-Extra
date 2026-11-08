@@ -28,6 +28,10 @@ public final class ExtraPacketCodec {
                 writeUtf(buffer, entry.getKey(), ExtraProtocol.MAX_RESOURCE_IDENTIFIER_BYTES);
                 writeVarInt(buffer, entry.getValue());
             }
+            writeVarInt(buffer, offer.persistentAnimations().size());
+            for (String type : offer.persistentAnimations()) {
+                writeUtf(buffer, type, ExtraProtocol.MAX_RESOURCE_IDENTIFIER_BYTES);
+            }
             return copyPayload(buffer);
         } finally {
             buffer.release();
@@ -54,13 +58,25 @@ public final class ExtraPacketCodec {
                     throw new IllegalArgumentException("Duplicate entity type in offer");
                 }
             }
+            int animationCount = readVarInt(buffer);
+            if (animationCount > ExtraProtocol.MAX_CONFIGURED_ENTITY_TYPES) {
+                throw new IllegalArgumentException("Too many animation types");
+            }
+            java.util.Set<String> animationTypes = new java.util.HashSet<>();
+            for (int index = 0; index < animationCount; index++) {
+                String typeId = readUtf(buffer, ExtraProtocol.MAX_RESOURCE_IDENTIFIER_BYTES);
+                if (!animationTypes.add(typeId)) {
+                    throw new IllegalArgumentException("Duplicate animation type in offer");
+                }
+            }
             ClientOffer offer = new ClientOffer(
                     protocolVersion,
                     enabled,
                     maximumDistanceBlocks,
                     minimumDistanceBlocks,
                     entityViewScaleQ10,
-                    ranges
+                    ranges,
+                    animationTypes
             );
             requireFullyRead(buffer);
             return offer;
