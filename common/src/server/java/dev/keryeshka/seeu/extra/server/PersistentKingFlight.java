@@ -234,6 +234,13 @@ public final class PersistentKingFlight {
             LOGGER.error("Could not serialize King flight state; keeping the real King alive", failure);
             return;
         }
+        if (distantDecrees != null) {
+            int nativeCooldown = king instanceof KingDecreeCooldownAccess access
+                    ? access.seeuExtra$finishDecreeForOffload() : 0;
+            // If the live King has already issued a decree, its remaining
+            // recovery must delay the distant version too.
+            distantDecrees.inheritNativeCooldown(level, nativeCooldown);
+        }
         lastLiveKing.remove(level);
         currentTarget.remove(level);
         // Discard, not unload: never leave a second boss stored in his old chunk.
@@ -270,13 +277,21 @@ public final class PersistentKingFlight {
         ServerPlayer nearbyForActivation = nearestPresentPlayer(
                 level, data.x, data.z, DETECTION_RANGE_SQUARED);
         if (nearbyForActivation != null
-                && withinActivationDistance(server, data, nearbyForActivation)
-                && tryRestore(level, data)) {
-            currentTarget.remove(level);
-            if (distantDecrees != null) {
-                distantDecrees.clear(level);
+                && withinActivationDistance(server, data, nearbyForActivation)) {
+            // tryRestore clears data.base on success; keep the UUID for
+            // the immediate native entity lookup after the handoff.
+            UUID kingId = data.base.uuid();
+            if (tryRestore(level, data)) {
+                currentTarget.remove(level);
+                if (distantDecrees != null) {
+                    int remaining = distantDecrees.handoffToNative(level);
+                    Entity liveKing = level.getEntity(kingId);
+                    if (liveKing instanceof KingDecreeCooldownAccess access) {
+                        access.seeuExtra$inheritDecreeCooldown(remaining);
+                    }
+                }
+                return;
             }
-            return;
         }
 
         // Only these four player-state decrees run without the real entity.
