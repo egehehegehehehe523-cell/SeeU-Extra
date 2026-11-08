@@ -2,6 +2,7 @@ package dev.keryeshka.seeu.extra.server;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundClearTitlesPacket;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
@@ -13,6 +14,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.phys.Vec3;
@@ -118,7 +120,7 @@ final class DistantKingDecrees {
                 player.connection.send(new ClientboundClearTitlesPacket(false));
                 player.displayClientMessage(Component.translatable("decree.antarchy.obeyed")
                         .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD), true);
-                player.playNotifySound(SoundEvents.BELL_BLOCK, SoundSource.HOSTILE, 0.6F, 1.8F);
+                notifyKingSound(player, "king_success", 0.8F, 1.0F);
             } else if (result == Evaluation.VIOLATED
                     && participantElapsed >= ANNOUNCEMENT_TICKS + RESPONSE_GRACE_TICKS) {
                 participant.violated = true;
@@ -191,7 +193,7 @@ final class DistantKingDecrees {
         player.connection.send(new ClientboundSetSubtitleTextPacket(
                 Component.translatable(decree.key + ".subtitle")
                         .withStyle(ChatFormatting.WHITE)));
-        player.playNotifySound(SoundEvents.BELL_BLOCK, SoundSource.HOSTILE, 0.8F, 0.9F);
+        notifyKingSound(player, "king_decree", 1.15F, 1.0F);
     }
 
     private static void punish(ServerLevel level, ServerPlayer player) {
@@ -208,7 +210,17 @@ final class DistantKingDecrees {
         player.connection.send(new ClientboundSetSubtitleTextPacket(
                 Component.translatable("decree.antarchy.violated.subtitle")
                         .withStyle(ChatFormatting.YELLOW)));
-        player.playNotifySound(SoundEvents.BELL_BLOCK, SoundSource.HOSTILE, 1.0F, 0.6F);
+        notifyKingSound(player, "king_judgement", 1.1F, 1.0F);
+    }
+
+    private static void notifyKingSound(ServerPlayer player, String id, float volume, float pitch) {
+        ResourceLocation key = ResourceLocation.fromNamespaceAndPath("antarchy", id);
+        SoundEvent sound = BuiltInRegistries.SOUND_EVENT.containsKey(key)
+                ? BuiltInRegistries.SOUND_EVENT.get(key) : SoundEvents.BELL_BLOCK;
+        // The source is offloaded and cannot use Antarchy's normal projected
+        // sound helper. Send the voice to its decree recipient, not to a fake
+        // entity in a nonexistent chunk.
+        player.playNotifySound(sound, SoundSource.HOSTILE, volume, pitch);
     }
 
     private static void finish(State state) {
