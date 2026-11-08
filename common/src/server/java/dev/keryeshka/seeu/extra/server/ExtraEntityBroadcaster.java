@@ -84,7 +84,14 @@ public final class ExtraEntityBroadcaster {
         long packetSequence = nextSequence();
         for (Map.Entry<ServerLevel, List<ExtraViewerSession>> entry : sessionsByLevel.entrySet()) {
             ServerLevel level = entry.getKey();
-            SpatialCellIndex<EntityCandidate> candidates = scanLevel(server, level, selector);
+            Set<String> optedInTypes = new HashSet<>();
+            for (ExtraViewerSession session : entry.getValue()) {
+                optedInTypes.addAll(session.offer().entityDistances().keySet());
+            }
+            if (optedInTypes.isEmpty()) {
+                continue;
+            }
+            SpatialCellIndex<EntityCandidate> candidates = scanLevel(server, level, selector, optedInTypes);
             Map<UUID, EntitySnapshot> snapshotCache = new HashMap<>();
             Set<UUID> failedSnapshots = new HashSet<>();
             String dimensionKey = level.dimension().location().toString();
@@ -108,7 +115,8 @@ public final class ExtraEntityBroadcaster {
     ) {
         Map<ServerLevel, List<ExtraViewerSession>> grouped = new IdentityHashMap<>();
         for (ExtraViewerSession session : sessions) {
-            if (session == null || session.offer() == null || !session.offer().enabled()) {
+            if (session == null || session.offer() == null || !session.offer().enabled()
+                    || session.offer().entityDistances().isEmpty()) {
                 continue;
             }
             ServerPlayer player = session.player();
@@ -124,7 +132,8 @@ public final class ExtraEntityBroadcaster {
     private SpatialCellIndex<EntityCandidate> scanLevel(
             MinecraftServer server,
             ServerLevel level,
-            EntitySelector selector
+            EntitySelector selector,
+            Set<String> optedInTypes
     ) {
         SpatialCellIndex<EntityCandidate> candidates = new SpatialCellIndex<>();
         for (Entity entity : level.getAllEntities()) {
@@ -139,6 +148,7 @@ public final class ExtraEntityBroadcaster {
             String typeId = typeIdentifier.toString();
             if (quarantinedTypes.contains(typeId)
                     || !selector.selects(typeId)
+                    || !optedInTypes.contains(typeId)
                     || containsPlayer(entity)) {
                 continue;
             }
@@ -253,12 +263,14 @@ public final class ExtraEntityBroadcaster {
                 cellCandidates -> {
                     for (EntityCandidate candidate : cellCandidates) {
                         Entity entity = candidate.entity();
-                        if (!entity.broadcastToPlayer(viewer)) {
+                        int typeMaximum = Math.min(maximumDistanceBlocks,
+                                viewerOffer.maximumDistanceFor(candidate.typeId()));
+                        if (typeMaximum <= 0 || !entity.broadcastToPlayer(viewer)) {
                             continue;
                         }
 
                         double distanceSquared = viewer.distanceToSqr(entity);
-                        if (distanceSquared < minimumDistanceSquared || distanceSquared > maximumDistanceSquared) {
+                        if (distanceSquared < minimumDistanceSquared || distanceSquared > square(typeMaximum)) {
                             continue;
                         }
 
