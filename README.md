@@ -18,7 +18,8 @@ The server writes `config/seeu-extra-server.json`. **New installs** default to `
 - `SELECTED` permits `types` and `namespaces`. An enabled client entry must also be permitted by the server.
 - `ALL` permits the player's opted-in types; the client cannot override `excludedTypes` or `excludedNamespaces`.
 - The lower of server, client-global and client-per-type maximum distances wins. The higher minimum wins.
-- `entityCap` and `updateIntervalTicks` bound server traffic and snapshot work. The server scans **only types requested by active clients**.
+- `entityCap` and `updateIntervalTicks` bound server traffic and snapshot work.
+- `liveKingTicking: true` (default) keeps **at most one Antarchy King per dimension** entity-ticking via a **temporary level-30 chunk ticket** while an opted-in viewer is farther away than simulation distance but inside their configured King LOD range. No /forceload changes are saved, and the ticket is released when no longer needed. Set it to `false` to restore snapshot-only behavior. It does not tick the Queen or other entities. The server scans **only types requested by active clients**.
 - Players and anything carrying a player stay on SeeU's existing player path, not SeeU Extra's proxy path.
 - Server and client must run the **same fork version** (protocol 3). A mismatched upstream SeeU Extra build will not connect.
 
@@ -39,11 +40,11 @@ The server writes `config/seeu-extra-server.json`. **New installs** default to `
 
 ## Renderer behavior and limitations
 
-- Outside vanilla rendering range, SeeU Extra uses a continuously interpolated snapshot-backed entity proxy—even when a stale vanilla client entity is still present. This avoids frozen positions and tick-based locomotion animations at the handoff.
+- Outside vanilla rendering range, SeeU Extra reuses the **real client entity whenever one is still tracked**, preserving its GeckoLib controller and synchronized boss state. When the entity is absent on the client, it renders an interpolated snapshot-backed proxy until the real entity becomes available again. GeckoLib's controller on a newly spawned real entity is independent of the proxy, so some initial phase mismatch may remain at a complete client unload/retrack boundary.
 - Animated model visibility is tested using expanded bounds so wings and large geometry are not culled at the collision-box edge.
 - Proxies use normal registered mod entity renderers, including GeckoLib-based ones; the original mod must be installed on the client.
 - The protocol carries position, rotation, velocity, tick age, generic flags, pose, and equipment. **It does not currently reproduce arbitrary mod-specific synchronized entity data, boss attack animation triggers, or server events.** King/Queen baseline fly/idle animations can run, but exact attack-state parity may require an optional Antarchy-specific state adapter.
-- SeeU Extra scans *already-loaded server entities* and never force-loads chunks. It retains up to 1,024 last-known snapshots per server dimension for 10 minutes after a chunk unload, so previously observed bosses can remain visible on distant terrain. **Unloaded mobs do not tick or move**: their remote visuals stay at the last-known position, while client-driven GeckoLib animation keeps playing. Entities never observed while loaded cannot be reconstructed, and expired snapshots disappear. Detected death/discard removals are dropped; last-known visuals may otherwise become stale until the retention period expires.
+- SeeU Extra scans *already-loaded server entities* and retains up to 1,024 last-known snapshots per dimension for 10 minutes after unload. **Other unloaded mobs do not tick or move**: their remote visuals stay at the last-known location while the client animation continues. When `liveKingTicking` is enabled, an already-observed distant King is the sole exception: its chunk can be temporarily loaded at an entity-ticking ticket level to run **Antarchy's existing patrol and AI**, with a bounded one-King-per-dimension budget. This uses normal chunk generation/loading and therefore has CPU/memory cost; it is not a free LOD animation feature. The ticket is scoped to active opt-in sessions and is removed when no viewer needs it. Entities never observed while loaded cannot be reconstructed, and expired snapshots disappear. Detected death/discard removals are dropped; other last-known visuals can become stale until retention expires.
 - Client and server both quarantine entity types whose proxy creation or snapshot processing fails; consult `latest.log` for the first failure.
 
 ## Build
