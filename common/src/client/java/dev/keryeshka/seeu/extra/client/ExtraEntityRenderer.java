@@ -144,15 +144,15 @@ public final class ExtraEntityRenderer {
                     proxy.lastSeenFrame = currentFrame;
                     proxy.lastSeenNanos = now;
                 }
-                // The King always uses his persistent proxy, even in native combat range.
-                // RoyalBossRendererMixin prevents vanilla's duplicate King draw.
+                // An external renderer adapter may take over native draws.
                 if (vanillaCovered && !suppressNative) {
                     continue;
                 }
 
                 Entity renderEntity;
                 Vec3 position;
-                float renderYaw;                // A client entity just beyond the normal chunk boundary
+                float renderYaw;
+                // A client entity just beyond the normal chunk boundary
                 // may exist but no longer receive ticks. Never use it as the
                 // distant visual there: its GeckoLib controller can freeze.
                 double vanillaChunkBoundary = minecraft.options.getEffectiveRenderDistance() * 16.0D;
@@ -170,14 +170,14 @@ public final class ExtraEntityRenderer {
                     renderYaw = vanillaEntity.getYRot();
                 } else {
                     if (proxy == null || proxy.level != level || !proxy.typeId.equals(snapshot.typeId())) {
-                        proxy = createProxy(level, snapshot);
+                        proxy = createProxy(level, snapshot, persistentVisual);
                         proxies.put(snapshot.uuid(), proxy);
                     }
                     proxy.lastSeenFrame = currentFrame;
                     proxy.lastSeenNanos = now;
                     // Use a monotonic client tick for the synthetic GeckoLib
                     // entity; snapshot ages can be stale or arrive in bursts.
-                    // Inside ticking chunks use the real King's coordinates;
+                    // Inside ticking chunks use the real entity coordinates;
                     // distant snapshots can trail a charging boss by multiple
                     // blocks, otherwise misaligning the visible model and hitbox.
                     applyPosition(proxy.entity, state, viewer.tickCount, liveNative);
@@ -352,7 +352,7 @@ public final class ExtraEntityRenderer {
         }
     }
 
-    private ProxyEntry createProxy(ClientLevel level, EntitySnapshot snapshot) {
+    private ProxyEntry createProxy(ClientLevel level, EntitySnapshot snapshot, boolean persistentVisual) {
         ResourceLocation identifier = ResourceLocation.tryParse(snapshot.typeId());
         if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
             throw new IllegalArgumentException("Client registry has no entity type " + snapshot.typeId());
@@ -371,11 +371,11 @@ public final class ExtraEntityRenderer {
         entity.noPhysics = true;
         entity.setNoGravity(true);
         Object animationCache = null;
-        if (true) {
+        if (persistentVisual) {
             try {
                 animationCache = entity.getClass().getMethod("getAnimatableInstanceCache").invoke(entity);
             } catch (ReflectiveOperationException | LinkageError failure) {
-                LOGGER.warn("King GeckoLib cache could not be shared; using fallback visuals", failure);
+                LOGGER.debug("No accessible persistent animation cache for {}", snapshot.typeId(), failure);
             }
         }
         return new ProxyEntry(level, snapshot.typeId(), entity, animationCache);

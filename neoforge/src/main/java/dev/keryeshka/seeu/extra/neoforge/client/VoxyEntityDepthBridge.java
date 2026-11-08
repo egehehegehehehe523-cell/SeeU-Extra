@@ -20,7 +20,7 @@ import java.lang.reflect.Method;
  * entity render stage cannot make terrain occlude it.
  *
  * Uses NeoVoxy's existing Sable depth compositor without any Voxy, Iris or
- * Minecraft mixins. It brackets ONLY the King's batch, and scissors the depth
+ * Minecraft mixins. It brackets ONLY the entity's batch, and scissors the depth
  * passes to the conservative projected bounds of its animated model.
  */
 public final class VoxyEntityDepthBridge {
@@ -61,7 +61,7 @@ public final class VoxyEntityDepthBridge {
         }
         if (BEGIN_IN_PLACE == null || END_IN_PLACE == null) {
             if (!warnedUnavailable) {
-                LOGGER.warn("NeoVoxy depth compositor is unavailable; shader-only King/LOD occlusion needs a NeoVoxy build with VoxySableDepthShim");
+                LOGGER.warn("NeoVoxy depth compositor is unavailable; shader-only entity/LOD occlusion needs a NeoVoxy build with VoxySableDepthShim");
                 warnedUnavailable = true;
             }
             draw.run();
@@ -69,7 +69,7 @@ public final class VoxyEntityDepthBridge {
         }
 
         // Force prior proxies into their original framebuffer before changing
-        // the depth attachment; flush the King's model while the merged depth
+        // the depth attachment; flush the entity's model while the merged depth
         // is live, not later in the generic AFTER_ENTITIES endBatch.
         consumers.endBatch();
         DistantEntityVisualHooks.Adapter adapter = DistantEntityVisualHooks.adapter(typeId);
@@ -82,7 +82,7 @@ public final class VoxyEntityDepthBridge {
             began = true;
         } catch (ReflectiveOperationException | LinkageError failure) {
             broken = true;
-            LOGGER.warn("Disabling optional King/NeoVoxy depth compositing after a bridge failure", failure);
+            LOGGER.warn("Disabling optional entity/NeoVoxy depth compositing after a bridge failure", failure);
         }
         try {
             draw.run();
@@ -93,7 +93,7 @@ public final class VoxyEntityDepthBridge {
                     END_IN_PLACE.invoke(null);
                 } catch (IllegalAccessException | InvocationTargetException | LinkageError failure) {
                     broken = true;
-                    LOGGER.warn("Failed to restore King/NeoVoxy depth after rendering", failure);
+                    LOGGER.warn("Failed to restore entity/NeoVoxy depth after rendering", failure);
                 }
             }
         }
@@ -114,7 +114,7 @@ public final class VoxyEntityDepthBridge {
         float minX = 1, minY = 1, maxX = -1, maxY = -1;
         // Conservatively include wings, tail and long animations. If any
         // corner crosses the near plane, prefer the whole viewport to a
-        // cropped region that could accidentally erase part of the King.
+        // cropped region that could accidentally erase part of the entity.
         for (int x = -1; x <= 1; x += 2) {
             for (int y = -1; y <= 1; y += 2) {
                 for (int z = -1; z <= 1; z += 2) {
