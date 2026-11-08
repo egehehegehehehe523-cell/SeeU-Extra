@@ -189,8 +189,8 @@ public final class ExtraEntityRenderer {
         int renderChunks = Minecraft.getInstance().options.getEffectiveRenderDistance();
         double horizontalX = cameraPosition.x - entity.getX();
         double horizontalZ = cameraPosition.z - entity.getZ();
-        double vanillaBoundary = renderChunks * 16.0D + 16.0D;
-        if (horizontalX * horizontalX + horizontalZ * horizontalZ > vanillaBoundary * vanillaBoundary) {
+        double vanillaBoundary = renderChunks * 16.0D;
+        if (Math.max(Math.abs(horizontalX), Math.abs(horizontalZ)) > vanillaBoundary) {
             return false;
         }
         return frustum == null
