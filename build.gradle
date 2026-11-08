@@ -1,37 +1,59 @@
-allprojects {
-    group = project.maven_group
-    version = project.seeu_extra_version
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.141'
+}
 
-    tasks.withType(Jar).configureEach {
-        if (rootProject.file("LICENSE").exists()) {
-            from(rootProject.file("LICENSE")) {
-                into("META-INF")
-            }
-        }
+group = 'dev.keryeshka.worldbosses'
+version = project.mod_version
+base { archivesName = 'world-bosses-neoforge-1.21.1' }
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(project.java_version as int) }
+    withSourcesJar()
+}
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = project.java_version as int
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.neoforged.net/releases' }
+}
+
+// The standalone addon compiles against SeeU Extra Continuation's *jar*.
+// It never packages SeeU's classes; both mods must be installed separately.
+def seeuExtraJar = file(providers.gradleProperty('seeuExtraJar')
+        .orElse('libs/seeu-extra-neoforge-1.21.1-0.3.0.jar').get())
+dependencies {
+    compileOnly files(seeuExtraJar)
+}
+tasks.withType(JavaCompile).configureEach {
+    doFirst {
+        if (!seeuExtraJar.isFile()) throw new GradleException(
+                "SeeU Extra Continuation jar missing: ${seeuExtraJar}. " +
+                "Build branch seeu-extra-continuation first and pass -PseeuExtraJar=<path>.")
     }
+}
 
-    repositories {
-        exclusiveContent {
-            forRepository {
-                ivy {
-                    name = "SeeUGitHubReleases"
-                    url = uri("https://github.com/cat4blep/SeeU/releases/download")
-                    patternLayout {
-                        artifact("[revision]/[module]-[revision].[ext]")
-                    }
-                    metadataSources {
-                        artifact()
-                    }
-                }
-            }
-
-            filter {
-                includeModule("dev.keryeshka.seeu", "seeu-addon-api")
-            }
-        }
-
-        mavenCentral()
-        maven { url = "https://maven.neoforged.net/releases" }
-        maven { url = "https://maven.fabricmc.net/" }
+neoForge {
+    version = project.neo_version
+    runs {
+        client { client() }
+        server { server(); programArgument '--nogui' }
+        configureEach { systemProperty 'neoforge.enabledGameTestNamespaces', 'world_bosses' }
     }
+    mods {
+        world_bosses { sourceSet(sourceSets.main) }
+    }
+}
+
+tasks.named('processResources', ProcessResources) {
+    inputs.property('mod_version', project.mod_version)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(mod_version: project.mod_version)
+    }
+}
+tasks.named('jar', Jar) {
+    from(rootProject.file('LICENSE')) { into 'META-INF' }
 }

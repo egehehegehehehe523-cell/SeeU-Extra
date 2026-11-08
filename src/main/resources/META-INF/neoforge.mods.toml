@@ -1,0 +1,43 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+[[mixins]]
+    config="world_bosses.mixins.json"
+
+[[mods]]
+modId="world_bosses"
+version="${mod_version}"
+displayName="World Bosses"
+authors="SeeU Extra continuation contributors"
+description='''
+Standalone add-on for Antarchy King and Queen persistent flight, native combat
+handoff, global health bars and GeckoLib/Voxy visuals through SeeU Extra.
+'''
+
+[[dependencies.world_bosses]]
+    modId="neoforge"
+    type="required"
+    versionRange="[21.1.234,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.world_bosses]]
+    modId="minecraft"
+    type="required"
+    versionRange="[1.21.1]"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.world_bosses]]
+    modId="seeu_extra"
+    type="required"
+    versionRange="[0.3.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.world_bosses]]
+    modId="antarchy"
+    type="required"
+    versionRange="[2.3.0,)"
+    ordering="AFTER"
+    side="BOTH"

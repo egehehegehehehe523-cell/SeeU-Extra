@@ -1,0 +1,17 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "dev.keryeshka.worldbosses.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "KingIdleWanderMixin",
+    "QueenIdleWanderMixin",
+    "KingDecreeCooldownMixin",
+    "RoyalGlobalBossBarMixin"
+  ],
+  "client": [
+    "RoyalAnimationCacheMixin",
+    "RoyalBossRendererMixin"
+  ],
+  "injectors": { "defaultRequire": 0 }
+}
