@@ -51,6 +51,7 @@ public final class ExtraEntityBroadcaster {
     private ExtraServerSettings settings;
     private final boolean liveKingTicking;
     private final DistantKingTickManager kingTickets;
+    private final PersistentKingFlight persistentKing;
     private final Set<String> quarantinedTypes = new HashSet<>();
     private final Set<String> loggedRetainedTypes = new HashSet<>();
     private final Map<ServerLevel, Map<UUID, RetainedSnapshot>> retainedByLevel = new IdentityHashMap<>();
@@ -68,9 +69,19 @@ public final class ExtraEntityBroadcaster {
     public ExtraEntityBroadcaster(
             ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess
     ) {
+        this(settings, liveKingTicking, ticketAccess, false);
+    }
+
+    public ExtraEntityBroadcaster(
+            ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess,
+            boolean persistentKingSimulation
+    ) {
         this.settings = settings;
-        this.liveKingTicking = liveKingTicking;
+        // Persistent flight never loads a distant chunk. The legacy live-King
+        // ticket mode is mutually exclusive with the persistent simulation.
+        this.liveKingTicking = liveKingTicking && !persistentKingSimulation;
         this.kingTickets = new DistantKingTickManager(ticketAccess);
+        this.persistentKing = new PersistentKingFlight(persistentKingSimulation);
     }
 
     public void updateSettings(ExtraServerSettings settings) {
@@ -88,6 +99,10 @@ public final class ExtraEntityBroadcaster {
 
     public void tick(MinecraftServer server, Collection<? extends ExtraViewerSession> sessions) {
         ExtraServerSettings currentSettings = settings;
+        // Global world-boss movement continues even with no SeeU viewers.
+        if (currentSettings.enabled() && currentSettings.selector().selects(KING_TYPE)) {
+            persistentKing.tick(server);
+        }
         if (!currentSettings.enabled()) {
             elapsedTicks = 0;
             kingTickets.clear();
@@ -357,12 +372,26 @@ public final class ExtraEntityBroadcaster {
                 }
                 snapshots.add(snapshot);
             }
-            // A mob can be removed from the loaded entity manager the moment
-            // its server chunk unloads. Preserve a bounded last-known visual
-            // while its source entity no longer ticks; never force-load chunks.
+            // A single persistent King snapshot replaces his discarded live
+            // entity while it is cruising through chunks which never load.
+            EntitySnapshot distantKing = persistentKing.snapshot(viewer.serverLevel());
+            if (distantKing != null && snapshots.size() < settings.entityCap()
+                    && !currentlyLoaded.contains(distantKing.uuid())
+                    && settings.selector().selects(KING_TYPE)
+                    && !snapshots.stream().anyMatch(s -> s.uuid().equals(distantKing.uuid()))) {
+                int kingMaximum = Math.min(maximumDistance, offer.maximumDistanceFor(KING_TYPE));
+                if (kingMaximum > 0) {
+                    double distance = distanceSquared(viewer, distantKing);
+                    if (distance >= square(minimumDistance) && distance <= square(kingMaximum)) {
+                        snapshots.add(distantKing);
+                    }
+                }
+            }
+            // Preserve other entities' last-known visuals, excluding the
+            // original King position now owned by the persistent simulation.
             appendRetainedSnapshots(
                     snapshots, viewer, offer, settings, retained, currentlyLoaded,
-                    minimumDistance, maximumDistance);
+                    minimumDistance, maximumDistance, distantKing);
         }
 
         try {
@@ -417,7 +446,8 @@ public final class ExtraEntityBroadcaster {
             Map<UUID, RetainedSnapshot> retained,
             Set<UUID> currentlyLoaded,
             int minimumDistance,
-            int maximumDistance
+            int maximumDistance,
+            EntitySnapshot distantKing
     ) {
         if (snapshots.size() >= settings.entityCap()) {
             return;
@@ -425,7 +455,8 @@ public final class ExtraEntityBroadcaster {
         double minSq = square(minimumDistance);
         List<RetainedSnapshot> available = new ArrayList<>();
         for (Map.Entry<UUID, RetainedSnapshot> entry : retained.entrySet()) {
-            if (currentlyLoaded.contains(entry.getKey())) {
+            if (currentlyLoaded.contains(entry.getKey())
+                    || (distantKing != null && distantKing.uuid().equals(entry.getKey()))) {
                 continue;
             }
             RetainedSnapshot cached = entry.getValue();
@@ -594,6 +625,10 @@ public final class ExtraEntityBroadcaster {
             return Integer.MAX_VALUE;
         }
         return chunkDistance * 16;
+    }
+
+    static EntitySnapshot captureKingSnapshot(Entity entity) {
+        return createSnapshot(new EntityCandidate(entity, KING_TYPE, 0));
     }
 
     private static EntitySnapshot createSnapshot(EntityCandidate candidate) {

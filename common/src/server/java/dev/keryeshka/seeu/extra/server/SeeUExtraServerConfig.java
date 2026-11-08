@@ -30,6 +30,10 @@ public final class SeeUExtraServerConfig {
     // The King only: allow his real server AI to run while an opted-in viewer
     // watches him outside simulation distance. Disable to retain old behavior.
     public boolean liveKingTicking = true;
+    // One authoritative King per dimension: persist his full entity NBT, and
+    // simulate flight without chunk tickets until naturally ticking terrain is close.
+    // Overrides legacy liveKingTicking for the King when enabled.
+    public boolean persistentKingSimulation = true;
     // NeoForge only: test a low-priority flight waypoint if the King remains
     // stationary without a target, without overriding his combat behavior.
     public boolean kingIdleWanderFallback = true;

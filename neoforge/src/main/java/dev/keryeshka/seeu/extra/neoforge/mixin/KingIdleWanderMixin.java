@@ -25,7 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Pseudo
 @Mixin(targets = "com.craisinlord.antarchy.content.entity.royal.KingEntity", remap = false)
 public abstract class KingIdleWanderMixin {
-    @Unique private static final double seeuExtra$cruiseSpeed = 0.20D;
+    @Unique private static final double seeuExtra$cruiseSpeed = 0.85D;
     @Unique private static final double seeuExtra$maxVerticalSpeed = 0.07D;
     @Unique private static final double seeuExtra$minProgressSquared = 0.0025D;
 
@@ -93,20 +93,25 @@ public abstract class KingIdleWanderMixin {
             seeuExtra$heading = new Vec3(seeuExtra$heading.x, vertical, seeuExtra$heading.z).normalize();
         }
 
+        // Face the intended heading first, then move along the actual facing.
+        // Previously displacement was applied immediately while the body only
+        // rotated 4 degrees/tick, making the King appear to fly backwards.
+        float wantedYaw = (float) (Mth.atan2(-seeuExtra$heading.x,
+                seeuExtra$heading.z) * Mth.RAD_TO_DEG);
+        float yaw = Mth.approachDegrees(king.getYRot(), wantedYaw, 10.0F);
+        double radians = yaw * Mth.DEG_TO_RAD;
         Vec3 step = new Vec3(
-                seeuExtra$heading.x * seeuExtra$cruiseSpeed,
+                -Math.sin(radians) * seeuExtra$cruiseSpeed,
                 Mth.clamp(seeuExtra$heading.y * seeuExtra$cruiseSpeed,
                         -seeuExtra$maxVerticalSpeed, seeuExtra$maxVerticalSpeed),
-                seeuExtra$heading.z * seeuExtra$cruiseSpeed
+                Math.cos(radians) * seeuExtra$cruiseSpeed
         );
 
-        // Unlike setPos, normal move() keeps Minecraft's entity manager
-        // authoritative. No heightmap lookup, chunk query, or path search.
+        // Only used within real ticking terrain. Distant movement is simulated
+        // independently in PersistentKingFlight without collision or chunk queries.
         king.move(MoverType.SELF, step);
         king.setDeltaMovement(step);
         king.hasImpulse = true;
-        float wantedYaw = (float) (Mth.atan2(-step.x, step.z) * Mth.RAD_TO_DEG);
-        float yaw = Mth.approachDegrees(king.getYRot(), wantedYaw, 4.0F);
         king.setYRot(yaw);
         king.setYBodyRot(yaw);
         king.setYHeadRot(yaw);
