@@ -14,10 +14,9 @@ public final class SeeUExtraNeoForge {
     private final SeeUExtraServerEndpoint endpoint;
 
     public SeeUExtraNeoForge() {
-        endpoint = new SeeUExtraServerEndpoint(
-                SeeUExtraServerConfig.load(FMLPaths.CONFIGDIR.get()),
-                new NeoForgeKingTicketAccess()
-        );
+        SeeUExtraServerConfig config = SeeUExtraServerConfig.load(FMLPaths.CONFIGDIR.get());
+        KingWanderOptions.enabled = config.kingIdleWanderFallback;
+        endpoint = new SeeUExtraServerEndpoint(config, new NeoForgeKingTicketAccess());
         SeeUServerAddons.getInstance().register(SeeUExtra.DESCRIPTOR, endpoint);
         NeoForge.EVENT_BUS.addListener(this::onServerTick);
     }
