@@ -4,7 +4,8 @@
   "package": "dev.keryeshka.seeu.extra.neoforge.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "KingIdleWanderMixin"
+    "KingIdleWanderMixin",
+    "KingDecreeCooldownMixin"
   ],
   "client": [
     "KingAnimationCacheMixin",
