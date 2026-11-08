@@ -47,6 +47,7 @@ public final class ExtraEntityBroadcaster {
 
     private ExtraServerSettings settings;
     private final Set<String> quarantinedTypes = new HashSet<>();
+    private final Set<String> loggedRetainedTypes = new HashSet<>();
     private final Map<ServerLevel, Map<UUID, RetainedSnapshot>> retainedByLevel = new IdentityHashMap<>();
     private int elapsedTicks;
     private long sequence;
@@ -59,6 +60,7 @@ public final class ExtraEntityBroadcaster {
         this.settings = settings;
         this.elapsedTicks = 0;
         this.quarantinedTypes.clear();
+        this.loggedRetainedTypes.clear();
         this.retainedByLevel.clear();
     }
 
@@ -358,6 +360,11 @@ public final class ExtraEntityBroadcaster {
                 break;
             }
             snapshots.add(cached.snapshot());
+            if (loggedRetainedTypes.add(cached.snapshot().typeId())) {
+                LOGGER.info("Serving last-known unloaded entity type {} at distance {} blocks",
+                        cached.snapshot().typeId(),
+                        Math.round(Math.sqrt(distanceSquared(viewer, cached.snapshot()))));
+            }
         }
     }
 
