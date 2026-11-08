@@ -78,7 +78,11 @@ public final class SeeUExtraNeoForgeClient {
                 event.getCamera().getPosition(),
                 event.getFrustum(),
                 event.getPartialTick().getGameTimeDeltaPartialTick(false),
-                offer
+                offer,
+                (typeId, entity, position, draw) -> VoxyKingDepthBridge.submit(
+                        typeId, position, event.getCamera().getPosition(),
+                        event.getModelViewMatrix(), event.getProjectionMatrix(),
+                        consumers, draw)
         );
         consumers.endBatch();
     }

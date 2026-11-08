@@ -6,6 +6,7 @@ import dev.keryeshka.seeu.extra.protocol.EntityFlags;
 import dev.keryeshka.seeu.extra.protocol.EntitySnapshot;
 import dev.keryeshka.seeu.extra.protocol.EquipmentSnapshot;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.LightTexture;
@@ -63,6 +64,14 @@ public final class ExtraEntityRenderer {
         loggedFirstSubmission = false;
     }
 
+    @FunctionalInterface
+    public interface ProxyRenderSubmission {
+        void submit(String typeId, Entity entity, Vec3 position, Runnable draw);
+    }
+
+    private static final ProxyRenderSubmission DIRECT_SUBMISSION =
+            (typeId, entity, position, draw) -> draw.run();
+
     public void render(
             PoseStack poseStack,
             MultiBufferSource consumers,
@@ -70,6 +79,18 @@ public final class ExtraEntityRenderer {
             Frustum frustum,
             float partialTick,
             ClientOffer offer
+    ) {
+        render(poseStack, consumers, cameraPosition, frustum, partialTick, offer, DIRECT_SUBMISSION);
+    }
+
+    public void render(
+            PoseStack poseStack,
+            MultiBufferSource consumers,
+            Vec3 cameraPosition,
+            Frustum frustum,
+            float partialTick,
+            ClientOffer offer,
+            ProxyRenderSubmission submission
     ) {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
@@ -83,6 +104,7 @@ public final class ExtraEntityRenderer {
             return;
         }
 
+        boolean shaderPackActive = ShaderPackState.isActive();
         long currentFrame = nextFrame();
         long now = System.nanoTime();
         double minimumDistanceSquared = square(offer.minimumDistanceBlocks());
@@ -199,9 +221,25 @@ public final class ExtraEntityRenderer {
                 if (!frustumVisible) {
                     continue;
                 }
+                boolean king = KING_TYPE.equals(snapshot.typeId());
+                // A copied glowing tag and FULL_BRIGHT block light turn the distant King
+                // into an emissive silhouette in Iris shader packs. This only changes
+                // the synthetic visual, not the real King's combat/state flags.
+                if (king && renderEntity != vanillaEntity) {
+                    renderEntity.setGlowingTag(!shaderPackActive
+                            && EntityFlags.has(snapshot.flags(), EntityFlags.GLOWING));
+                }
+                // Never ask the client to load a distant chunk for its light. When the
+                // chunk is available, sample normally; otherwise use daylight without
+                // fabricated maximum block light (which shaders interpret as emission).
+                int packedLight = king && shaderPackActive
+                        ? (level.hasChunkAt(BlockPos.containing(position))
+                            ? dispatcher.getPackedLightCoords(renderEntity, partialTick)
+                            : LightTexture.FULL_SKY)
+                        : LightTexture.FULL_BRIGHT;
                 poseStack.pushPose();
                 try {
-                    dispatcher.render(
+                    submission.submit(snapshot.typeId(), renderEntity, position, () -> dispatcher.render(
                             renderEntity,
                             position.x - cameraPosition.x,
                             position.y - cameraPosition.y,
@@ -210,8 +248,8 @@ public final class ExtraEntityRenderer {
                             partialTick,
                             poseStack,
                             consumers,
-                            LightTexture.FULL_BRIGHT
-                    );
+                            packedLight
+                    ));
                     if (!loggedFirstSubmission) {
                         LOGGER.info(
                                 "Submitted first SeeU Extra entity: type={}, distance={}",
