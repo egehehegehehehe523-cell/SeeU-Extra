@@ -33,6 +33,9 @@ public final class SeeUExtraServerConfig {
     // NeoForge only: test a low-priority flight waypoint if the King remains
     // stationary without a target, without overriding his combat behavior.
     public boolean kingIdleWanderFallback = true;
+    // Experimental real-entity roaming. Requires ticking chunks; off by default
+    // because moving far from players can cause new terrain to be generated.
+    public boolean kingGlobalRoam = false;
 
     public static SeeUExtraServerConfig load(Path configDirectory) {
         Path configPath = configDirectory.resolve(FILE_NAME);
