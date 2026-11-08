@@ -37,11 +37,12 @@ public final class SeeUExtraServerConfig {
     // Offloaded King can proclaim Kneel, Do Not Run, Stand Tall and Stand Your
     // Ground within 32 chunks. Combat decrees require the real entity.
     public boolean kingDistantPlayerDecrees = true;
-    // NeoForge only: test a low-priority flight waypoint if the King remains
-    // stationary without a target, without overriding his combat behavior.
+    // NeoForge only: enable the idle-flight fallback. When persistent King
+    // simulation is on, this also keeps the native King moving continuously
+    // after the offloaded -> native handoff. Set false to opt out.
     public boolean kingIdleWanderFallback = true;
-    // Experimental real-entity roaming. Requires ticking chunks; off by default
-    // because moving far from players can cause new terrain to be generated.
+    // Enable continuous idle roaming even without persistent King simulation.
+    // The native King still requires naturally ticking chunks to move.
     public boolean kingGlobalRoam = false;
 
     public static SeeUExtraServerConfig load(Path configDirectory) {
