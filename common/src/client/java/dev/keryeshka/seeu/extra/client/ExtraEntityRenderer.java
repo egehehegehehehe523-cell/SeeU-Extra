@@ -97,9 +97,6 @@ public final class ExtraEntityRenderer {
                 continue;
             }
             Entity vanillaEntity = realEntities.get(snapshot.uuid());
-            // Keep an existing proxy alive while vanilla renders the same entity.
-            // Discarding it at each handoff destroys GeckoLib's per-entity
-            // controller cache, so wing/locomotion animations restart at frame 0.
             boolean vanillaCovered = vanillaEntity != null && isCoveredByVanilla(
                     dispatcher,
                     vanillaEntity,
@@ -112,25 +109,40 @@ public final class ExtraEntityRenderer {
 
             try {
                 ProxyEntry proxy = proxies.get(snapshot.uuid());
-                if (vanillaCovered && proxy == null) {
-                    continue;
-                }
-                if (proxy == null || proxy.level != level || !proxy.typeId.equals(snapshot.typeId())) {
-                    proxy = createProxy(level, snapshot);
-                    proxies.put(snapshot.uuid(), proxy);
-                }
-                proxy.lastSeenFrame = currentFrame;
-                // Like SeeU's player proxies, use the client's continuously
-                // ticking clock rather than a periodically replaced packet age.
-                applyPosition(proxy.entity, state, viewer.tickCount);
-                if (proxy.appliedRevision != state.revision()) {
-                    applySnapshotState(proxy.entity, snapshot);
-                    proxy.appliedRevision = state.revision();
+                if (proxy != null) {
+                    // Do not discard the proxy while vanilla is active; a
+                    // transient re-tracking gap should reuse its controller.
+                    proxy.lastSeenFrame = currentFrame;
                 }
                 if (vanillaCovered) {
                     continue;
                 }
-                Entity renderEntity = proxy.entity;
+
+                Entity renderEntity;
+                Vec3 position;
+                if (vanillaEntity != null) {
+                    // Prefer the actual client entity as soon as it exists,
+                    // even when vanilla's normal distance test rejects it.
+                    // Its own GeckoLib controllers keep animating through the
+                    // LOD-to-vanilla transition, with real synced boss state.
+                    renderEntity = vanillaEntity;
+                    position = vanillaEntity.position();
+                } else {
+                    if (proxy == null || proxy.level != level || !proxy.typeId.equals(snapshot.typeId())) {
+                        proxy = createProxy(level, snapshot);
+                        proxies.put(snapshot.uuid(), proxy);
+                    }
+                    proxy.lastSeenFrame = currentFrame;
+                    // Use a monotonic client tick for the synthetic GeckoLib
+                    // entity; snapshot ages can be stale or arrive in bursts.
+                    applyPosition(proxy.entity, state, viewer.tickCount);
+                    if (proxy.appliedRevision != state.revision()) {
+                        applySnapshotState(proxy.entity, snapshot);
+                        proxy.appliedRevision = state.revision();
+                    }
+                    renderEntity = proxy.entity;
+                    position = state.position();
+                }
 
                 boolean frustumVisible = shouldRenderBeyondVanillaDistance(renderEntity, frustum);
                 double horizontalX = Math.abs(cameraPosition.x - state.position().x);
@@ -145,8 +157,6 @@ public final class ExtraEntityRenderer {
                 if (!frustumVisible) {
                     continue;
                 }
-                Vec3 position = state.position();
-
                 poseStack.pushPose();
                 try {
                     dispatcher.render(
