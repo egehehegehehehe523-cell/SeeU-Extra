@@ -554,7 +554,13 @@ public final class ExtraEntityBroadcaster {
                                 entity.getBoundingBox().getSize(),
                                 viewerOffer.entityViewScaleQ10()
                         );
-                        if (need == VanillaEntityHandoff.SnapshotNeed.NONE) {
+                        // The native King stays physically active near players,
+                        // but SeeU Extra must keep supplying his persistent
+                        // visual proxy even when vanilla already tracks him.
+                        // Otherwise full snapshots delete that proxy right at
+                        // the handoff and the GeckoLib animation restarts.
+                        if (need == VanillaEntityHandoff.SnapshotNeed.NONE
+                                && !KING_TYPE.equals(candidate.typeId())) {
                             continue;
                         }
 
