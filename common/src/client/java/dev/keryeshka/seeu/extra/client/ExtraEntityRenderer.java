@@ -183,16 +183,20 @@ public final class ExtraEntityRenderer {
             Frustum frustum,
             Vec3 cameraPosition
     ) {
-        if (entity.shouldRender(cameraPosition.x, cameraPosition.y, cameraPosition.z)) {
-            return true;
+        // Having a real entity in ClientLevel is not proof that vanilla still
+        // renders or ticks it. World/entity distance settings may already have
+        // removed it from the normal render pass.
+        int renderChunks = Minecraft.getInstance().options.getEffectiveRenderDistance();
+        double horizontalX = cameraPosition.x - entity.getX();
+        double horizontalZ = cameraPosition.z - entity.getZ();
+        double vanillaBoundary = renderChunks * 16.0D + 16.0D;
+        if (horizontalX * horizontalX + horizontalZ * horizontalZ > vanillaBoundary * vanillaBoundary) {
+            return false;
         }
-        return frustum != null && dispatcher.shouldRender(
-                entity,
-                frustum,
-                cameraPosition.x,
-                cameraPosition.y,
-                cameraPosition.z
-        );
+        return frustum == null
+                ? entity.shouldRender(cameraPosition.x, cameraPosition.y, cameraPosition.z)
+                : dispatcher.shouldRender(entity, frustum,
+                        cameraPosition.x, cameraPosition.y, cameraPosition.z);
     }
 
     private static boolean shouldRenderBeyondVanillaDistance(
@@ -200,12 +204,11 @@ public final class ExtraEntityRenderer {
             Entity entity,
             Frustum frustum
     ) {
-        return frustum == null || dispatcher.shouldRender(
-                entity,
-                frustum,
-                entity.getX(),
-                entity.getY(),
-                entity.getZ()
+        // Bypass vanilla's distance test for a deliberately distant proxy.
+        // Inflate the bounds slightly for large animated models (e.g. GeckoLib
+        // wings) whose geometry can extend beyond the entity collision box.
+        return frustum == null || frustum.isVisible(
+                entity.getBoundingBox().inflate(Math.max(4.0D, entity.getBbWidth()))
         );
     }
 
