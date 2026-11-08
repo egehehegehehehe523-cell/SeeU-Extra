@@ -14,7 +14,6 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -80,7 +79,7 @@ public final class ExtraEntityRenderer {
         long currentFrame = nextFrame();
         long now = System.nanoTime();
         double minimumDistanceSquared = square(offer.minimumDistanceBlocks());
-                EntityRenderDispatcher dispatcher = minecraft.getEntityRenderDispatcher();
+        EntityRenderDispatcher dispatcher = minecraft.getEntityRenderDispatcher();
         realEntities.clear();
         for (Entity entity : level.entitiesForRendering()) {
             realEntities.put(entity.getUUID(), entity);
@@ -113,50 +112,36 @@ public final class ExtraEntityRenderer {
                 // A vanilla entity can remain in the client entity collection after
                 // it has stopped receiving updates. Always advance a snapshot-backed
                 // proxy beyond the vanilla handoff, even if that stale entity exists.
-                Entity renderEntity;
-                {
-                    ProxyEntry proxy = proxies.get(snapshot.uuid());
-                    if (proxy == null || proxy.level != level || !proxy.typeId.equals(snapshot.typeId())) {
-                        proxy = createProxy(level, snapshot);
-                        proxies.put(snapshot.uuid(), proxy);
-                    }
-                    proxy.lastSeenFrame = currentFrame;
-                    applyPosition(proxy.entity, state);
-                    if (proxy.appliedRevision != state.revision()) {
-                        applySnapshotState(proxy.entity, snapshot);
-                        proxy.appliedRevision = state.revision();
-                    }
-                    renderEntity = proxy.entity;
+                ProxyEntry proxy = proxies.get(snapshot.uuid());
+                if (proxy == null || proxy.level != level || !proxy.typeId.equals(snapshot.typeId())) {
+                    proxy = createProxy(level, snapshot);
+                    proxies.put(snapshot.uuid(), proxy);
                 }
+                proxy.lastSeenFrame = currentFrame;
+                applyPosition(proxy.entity, state);
+                if (proxy.appliedRevision != state.revision()) {
+                    applySnapshotState(proxy.entity, snapshot);
+                    proxy.appliedRevision = state.revision();
+                }
+                Entity renderEntity = proxy.entity;
 
-                if (!shouldRenderBeyondVanillaDistance(dispatcher, renderEntity, frustum)) {
+                if (!shouldRenderBeyondVanillaDistance(renderEntity, frustum)) {
                     continue;
                 }
-
-                double renderX;
-                double renderY;
-                double renderZ;
-                float renderYaw;
-                int packedLight;
                 Vec3 position = state.position();
-                renderX = position.x;
-                renderY = position.y;
-                renderZ = position.z;
-                renderYaw = state.bodyYaw();
-                packedLight = LightTexture.FULL_BRIGHT;
 
                 poseStack.pushPose();
                 try {
                     dispatcher.render(
                             renderEntity,
-                            renderX - cameraPosition.x,
-                            renderY - cameraPosition.y,
-                            renderZ - cameraPosition.z,
-                            renderYaw,
+                            position.x - cameraPosition.x,
+                            position.y - cameraPosition.y,
+                            position.z - cameraPosition.z,
+                            state.bodyYaw(),
                             partialTick,
                             poseStack,
                             consumers,
-                            packedLight
+                            LightTexture.FULL_BRIGHT
                     );
                     if (!loggedFirstSubmission) {
                         LOGGER.info(
@@ -199,11 +184,7 @@ public final class ExtraEntityRenderer {
                         cameraPosition.x, cameraPosition.y, cameraPosition.z);
     }
 
-    private static boolean shouldRenderBeyondVanillaDistance(
-            EntityRenderDispatcher dispatcher,
-            Entity entity,
-            Frustum frustum
-    ) {
+    private static boolean shouldRenderBeyondVanillaDistance(Entity entity, Frustum frustum) {
         // Bypass vanilla's distance test for a deliberately distant proxy.
         // Inflate the bounds slightly for large animated models (e.g. GeckoLib
         // wings) whose geometry can extend beyond the entity collision box.
