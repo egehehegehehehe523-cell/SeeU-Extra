@@ -170,7 +170,8 @@ public final class ExtraEntityRenderer {
                     renderYaw = liveKing != null ? liveKing.getYRot() : state.bodyYaw();
                 }
 
-                boolean frustumVisible = shouldRenderBeyondVanillaDistance(renderEntity, frustum);
+                boolean frustumVisible = shouldRenderBeyondVanillaDistance(
+                        renderEntity, frustum, KING_TYPE.equals(snapshot.typeId()));
                 double horizontalX = Math.abs(cameraPosition.x - state.position().x);
                 double horizontalZ = Math.abs(cameraPosition.z - state.position().z);
                 if (Math.max(horizontalX, horizontalZ)
@@ -242,12 +243,14 @@ public final class ExtraEntityRenderer {
                         cameraPosition.x, cameraPosition.y, cameraPosition.z);
     }
 
-    private static boolean shouldRenderBeyondVanillaDistance(Entity entity, Frustum frustum) {
-        // Bypass vanilla's distance test for a deliberately distant proxy.
-        // Inflate the bounds slightly for large animated models (e.g. GeckoLib
-        // wings) whose geometry can extend beyond the entity collision box.
+    private static boolean shouldRenderBeyondVanillaDistance(
+            Entity entity, Frustum frustum, boolean king) {
+        // Bypass vanilla's distance test. Antarchy's King model is much wider
+        // than its physical hitbox (giant animated wings/tail); avoid frustum
+        // popping when only those parts are inside the camera view.
+        double margin = king ? 96.0D : Math.max(4.0D, entity.getBbWidth());
         return frustum == null || frustum.isVisible(
-                entity.getBoundingBox().inflate(Math.max(4.0D, entity.getBbWidth()))
+                entity.getBoundingBox().inflate(margin)
         );
     }
 
@@ -260,6 +263,12 @@ public final class ExtraEntityRenderer {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null || minecraft.player == null
                 || !minecraft.level.dimension().location().toString().equals(tracker.dimensionKey())) {
+            return false;
+        }
+        // Proxy and native King deliberately have the same UUID. Never cancel
+        // the synthetic renderer's own draw: only the entity registered in
+        // ClientLevel by its runtime ID is eligible for vanilla suppression.
+        if (minecraft.level.getEntity(nativeKing.getId()) != nativeKing) {
             return false;
         }
         ProxyEntry entry = proxies.get(nativeKing.getUUID());
