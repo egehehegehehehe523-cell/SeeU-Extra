@@ -50,7 +50,7 @@ public final class ExtraEntityBroadcaster {
 
     private ExtraServerSettings settings;
     private final boolean liveKingTicking;
-    private final DistantKingTickManager kingTickets = new DistantKingTickManager();
+    private final DistantKingTickManager kingTickets;
     private final Set<String> quarantinedTypes = new HashSet<>();
     private final Set<String> loggedRetainedTypes = new HashSet<>();
     private final Map<ServerLevel, Map<UUID, RetainedSnapshot>> retainedByLevel = new IdentityHashMap<>();
@@ -58,12 +58,19 @@ public final class ExtraEntityBroadcaster {
     private long sequence;
 
     public ExtraEntityBroadcaster(ExtraServerSettings settings) {
-        this(settings, false);
+        this(settings, false, KingTicketAccess.vanilla());
     }
 
     public ExtraEntityBroadcaster(ExtraServerSettings settings, boolean liveKingTicking) {
+        this(settings, liveKingTicking, KingTicketAccess.vanilla());
+    }
+
+    public ExtraEntityBroadcaster(
+            ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess
+    ) {
         this.settings = settings;
         this.liveKingTicking = liveKingTicking;
+        this.kingTickets = new DistantKingTickManager(ticketAccess);
     }
 
     public void updateSettings(ExtraServerSettings settings) {
