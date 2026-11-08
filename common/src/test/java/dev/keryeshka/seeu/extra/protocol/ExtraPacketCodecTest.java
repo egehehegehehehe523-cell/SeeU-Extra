@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,6 +31,28 @@ class ExtraPacketCodecTest {
         assertEquals(offer, ExtraPacketCodec.decodeClientOffer(ExtraPacketCodec.encodeClientOffer(offer)));
         assertEquals(4096, offer.maximumDistanceFor("antarchy:king"));
         assertEquals(0, offer.maximumDistanceFor("minecraft:zombie"));
+    }
+
+    @Test
+    void persistentAnimationOfferRoundTripsForOptedInGeckoLibMobs() {
+        ClientOffer offer = new ClientOffer(
+                ExtraProtocol.VERSION, true, 8192, 0, 1024,
+                Map.of("antarchy:king", 4096, "antarchy:queen", 2048, "minecraft:zombie", 8192),
+                Set.of("antarchy:king", "antarchy:queen")
+        );
+        byte[] bytes = ExtraPacketCodec.encodeClientOffer(offer);
+        ClientOffer decoded = ExtraPacketCodec.decodeClientOffer(bytes);
+        assertEquals(offer, decoded);
+        assertTrue(decoded.persistentAnimations().contains("antarchy:king"));
+        assertFalse(decoded.persistentAnimations().contains("minecraft:zombie"));
+    }
+
+    @Test
+    void rejectsAnimationTypesNotInClientEntityOptInList() {
+        assertThrows(IllegalArgumentException.class, () -> new ClientOffer(
+                ExtraProtocol.VERSION, true, 8192, 0, 1024,
+                Map.of("minecraft:zombie", 8192), Set.of("antarchy:queen")
+        ));
     }
 
     @Test
