@@ -30,6 +30,9 @@ public final class SeeUExtraServerConfig {
     // The King only: allow his real server AI to run while an opted-in viewer
     // watches him outside simulation distance. Disable to retain old behavior.
     public boolean liveKingTicking = true;
+    // NeoForge only: test a low-priority flight waypoint if the King remains
+    // stationary without a target, without overriding his combat behavior.
+    public boolean kingIdleWanderFallback = true;
 
     public static SeeUExtraServerConfig load(Path configDirectory) {
         Path configPath = configDirectory.resolve(FILE_NAME);
