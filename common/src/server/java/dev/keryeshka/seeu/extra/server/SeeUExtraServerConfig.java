@@ -27,6 +27,9 @@ public final class SeeUExtraServerConfig {
     public int minimumDistanceBlocks = ExtraServerSettings.DEFAULT_MINIMUM_DISTANCE_BLOCKS;
     public int entityCap = ExtraServerSettings.DEFAULT_ENTITY_CAP;
     public int updateIntervalTicks = ExtraServerSettings.DEFAULT_UPDATE_INTERVAL_TICKS;
+    // The King only: allow his real server AI to run while an opted-in viewer
+    // watches him outside simulation distance. Disable to retain old behavior.
+    public boolean liveKingTicking = true;
 
     public static SeeUExtraServerConfig load(Path configDirectory) {
         Path configPath = configDirectory.resolve(FILE_NAME);
