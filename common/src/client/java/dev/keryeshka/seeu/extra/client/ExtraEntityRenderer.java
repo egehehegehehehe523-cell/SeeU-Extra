@@ -120,11 +120,19 @@ public final class ExtraEntityRenderer {
 
                 Entity renderEntity;
                 Vec3 position;
-                if (vanillaEntity != null) {
-                    // Prefer the actual client entity as soon as it exists,
-                    // even when vanilla's normal distance test rejects it.
-                    // Its own GeckoLib controllers keep animating through the
-                    // LOD-to-vanilla transition, with real synced boss state.
+                // A client entity just beyond the normal chunk boundary
+                // may exist but no longer receive ticks. Never use it as the
+                // distant visual there: its GeckoLib controller can freeze.
+                double vanillaChunkBoundary = minecraft.options.getEffectiveRenderDistance() * 16.0D;
+                boolean withinTickingClientArea = vanillaEntity != null
+                        && Math.max(
+                                Math.abs(cameraPosition.x - vanillaEntity.getX()),
+                                Math.abs(cameraPosition.z - vanillaEntity.getZ())
+                        ) <= vanillaChunkBoundary;
+                if (withinTickingClientArea) {
+                    // When the native entity is available inside normal
+                    // chunks but fails the entity-distance render test, use
+                    // its real GeckoLib controller and synced Antarchy state.
                     renderEntity = vanillaEntity;
                     position = vanillaEntity.position();
                 } else {
