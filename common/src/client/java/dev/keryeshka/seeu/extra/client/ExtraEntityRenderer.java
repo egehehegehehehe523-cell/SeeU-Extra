@@ -39,9 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class ExtraEntityRenderer {
     private static final Logger LOGGER = LoggerFactory.getLogger("SeeU Extra");
     private static final AtomicInteger NEXT_PROXY_ID = new AtomicInteger(1_100_000_000);
-    private static final String KING_TYPE = "antarchy:king";
-    // Preserve the controller across brief native-tracking gaps.
-    private static final long KING_PROXY_REUSE_NANOS = TimeUnit.MINUTES.toNanos(2);
+    private static final long PROXY_REUSE_NANOS = TimeUnit.MINUTES.toNanos(2);
 
     private final ExtraEntityTracker tracker;
     private final Map<UUID, ProxyEntry> proxies = new HashMap<>();
@@ -124,6 +122,10 @@ public final class ExtraEntityRenderer {
                 continue;
             }
             Entity vanillaEntity = realEntities.get(snapshot.uuid());
+            DistantEntityVisualHooks.Adapter adapter = DistantEntityVisualHooks.adapter(snapshot.typeId());
+            boolean persistentVisual = offer.persistentAnimations().contains(snapshot.typeId())
+                    || (adapter != null && adapter.suppressNativeDraw());
+            boolean suppressNative = adapter != null && adapter.suppressNativeDraw();
             boolean vanillaCovered = vanillaEntity != null && isCoveredByVanilla(
                     dispatcher,
                     vanillaEntity,
@@ -144,7 +146,7 @@ public final class ExtraEntityRenderer {
                 }
                 // The King always uses his persistent proxy, even in native combat range.
                 // RoyalBossRendererMixin prevents vanilla's duplicate King draw.
-                if (vanillaCovered && !KING_TYPE.equals(snapshot.typeId())) {
+                if (vanillaCovered && !suppressNative) {
                     continue;
                 }
 
@@ -159,9 +161,9 @@ public final class ExtraEntityRenderer {
                                 Math.abs(cameraPosition.x - vanillaEntity.getX()),
                                 Math.abs(cameraPosition.z - vanillaEntity.getZ())
                         ) <= vanillaChunkBoundary;
-                Entity liveKing = withinTickingClientArea && KING_TYPE.equals(snapshot.typeId())
+                Entity liveNative = withinTickingClientArea && persistentVisual
                         ? vanillaEntity : null;
-                if (withinTickingClientArea && !KING_TYPE.equals(snapshot.typeId())) {
+                if (withinTickingClientArea && !persistentVisual) {
                     // For ordinary entities, retain vanilla's native controller.
                     renderEntity = vanillaEntity;
                     position = vanillaEntity.position();
@@ -178,37 +180,26 @@ public final class ExtraEntityRenderer {
                     // Inside ticking chunks use the real King's coordinates;
                     // distant snapshots can trail a charging boss by multiple
                     // blocks, otherwise misaligning the visible model and hitbox.
-                    applyPosition(proxy.entity, state, viewer.tickCount, liveKing);
+                    applyPosition(proxy.entity, state, viewer.tickCount, liveNative);
                     if (proxy.appliedRevision != state.revision()) {
                         applySnapshotState(proxy.entity, snapshot);
                         proxy.appliedRevision = state.revision();
                     }
-                    if (liveKing != null) {
-                        // Antarchy's synced royal data drives attack layers
-                        // and phases, while the proxy owns the visual controller.
-                        syncNativeKingState(liveKing, proxy.entity);
-                        proxy.nativeKingPresent = true;
-                    } else {
-                        if (proxy.nativeKingPresent) {
-                            // A former attack must never remain on the proxy.
-                            KingBeamState.clear(proxy.entity);
-                            proxy.nativeKingPresent = false;
-                        }
-                        // Antarchy's ROYAL_FLYING defaults to true. Syncing
-                        // only non-default data can leave a previously grounded
-                        // proxy stuck in an idle/walk animation after a handoff.
-                        if (proxy.entity instanceof KingFlyingVisualAccess flight
-                                && !flight.seeuExtra$isRoyalFlying()) {
-                            flight.seeuExtra$setRoyalFlying(true);
-                        }
+                    if (liveNative != null) {
+                        syncNativeState(liveNative, proxy.entity);
+                        if (adapter != null) adapter.syncNativeState(liveNative, proxy.entity);
+                        proxy.nativeStatePresent = true;
+                    } else if (proxy.nativeStatePresent) {
+                        if (adapter != null) adapter.detached(proxy.entity);
+                        proxy.nativeStatePresent = false;
                     }
                     renderEntity = proxy.entity;
-                    position = liveKing != null ? liveKing.position() : state.position();
-                    renderYaw = liveKing != null ? liveKing.getYRot() : state.bodyYaw();
+                    position = liveNative != null ? liveNative.position() : state.position();
+                    renderYaw = liveNative != null ? liveNative.getYRot() : state.bodyYaw();
                 }
 
                 boolean frustumVisible = shouldRenderBeyondVanillaDistance(
-                        renderEntity, frustum, KING_TYPE.equals(snapshot.typeId()));
+                        renderEntity, frustum, adapter);
                 double horizontalX = Math.abs(cameraPosition.x - state.position().x);
                 double horizontalZ = Math.abs(cameraPosition.z - state.position().z);
                 if (Math.max(horizontalX, horizontalZ)
@@ -221,18 +212,18 @@ public final class ExtraEntityRenderer {
                 if (!frustumVisible) {
                     continue;
                 }
-                boolean king = KING_TYPE.equals(snapshot.typeId());
+                boolean syntheticEntity = renderEntity != vanillaEntity;
                 // A copied glowing tag and FULL_BRIGHT block light turn the distant King
                 // into an emissive silhouette in Iris shader packs. This only changes
                 // the synthetic visual, not the real King's combat/state flags.
-                if (king && renderEntity != vanillaEntity) {
+                if (syntheticEntity) {
                     renderEntity.setGlowingTag(!shaderPackActive
                             && EntityFlags.has(snapshot.flags(), EntityFlags.GLOWING));
                 }
                 // Never ask the client to load a distant chunk for its light. When the
                 // chunk is available, sample normally; otherwise use daylight without
                 // fabricated maximum block light (which shaders interpret as emission).
-                int packedLight = king && shaderPackActive
+                int packedLight = shaderPackActive
                         ? (level.hasChunkAt(BlockPos.containing(position))
                             ? dispatcher.getPackedLightCoords(renderEntity, partialTick)
                             : LightTexture.FULL_SKY)
@@ -266,12 +257,9 @@ public final class ExtraEntityRenderer {
             }
         }
 
-        // Keep one dormant King proxy across native handoffs; only tracked
-        // snapshots actually render, so this cannot duplicate a real boss.
-        // World changes and disconnects still clear the cache immediately.
+        // Keep animation controllers across brief native tracking gaps only.
         proxies.values().removeIf(proxy -> proxy.lastSeenFrame != currentFrame
-                && (!KING_TYPE.equals(proxy.typeId)
-                        || now - proxy.lastSeenNanos > KING_PROXY_REUSE_NANOS));
+                && now - proxy.lastSeenNanos > PROXY_REUSE_NANOS);
     }
 
     private static boolean isCoveredByVanilla(
@@ -297,20 +285,23 @@ public final class ExtraEntityRenderer {
     }
 
     private static boolean shouldRenderBeyondVanillaDistance(
-            Entity entity, Frustum frustum, boolean king) {
+            Entity entity, Frustum frustum, DistantEntityVisualHooks.Adapter adapter) {
         // Bypass vanilla's distance test. Antarchy's King model is much wider
         // than its physical hitbox (giant animated wings/tail); avoid frustum
         // popping when only those parts are inside the camera view.
-        double margin = king ? 96.0D : Math.max(4.0D, entity.getBbWidth());
+        double margin = adapter == null ? Math.max(4.0D, entity.getBbWidth())
+                : adapter.renderMargin(entity);
         return frustum == null || frustum.isVisible(
                 entity.getBoundingBox().inflate(margin)
         );
     }
 
     /** True only when the same King has a currently renderable SeeU snapshot. */
-    public boolean ownsKingRender(Entity nativeKing, ClientOffer offer) {
-        if (!KING_TYPE.equals(BuiltInRegistries.ENTITY_TYPE.getKey(nativeKing.getType()).toString())
-                || !offer.enabled() || offer.maximumDistanceFor(KING_TYPE) <= 0) {
+    public boolean ownsNativeRender(Entity nativeKing, ClientOffer offer) {
+        String typeId = BuiltInRegistries.ENTITY_TYPE.getKey(nativeKing.getType()).toString();
+        DistantEntityVisualHooks.Adapter adapter = DistantEntityVisualHooks.adapter(typeId);
+        if (adapter == null || !adapter.suppressNativeDraw()
+                || !offer.enabled() || offer.maximumDistanceFor(typeId) <= 0) {
             return false;
         }
         Minecraft minecraft = Minecraft.getInstance();
@@ -332,7 +323,7 @@ public final class ExtraEntityRenderer {
             InterpolatedEntityState state = tracked.sample(System.nanoTime());
             if (state.snapshot().uuid().equals(nativeKing.getUUID())) {
                 double distance = minecraft.player.distanceToSqr(state.position());
-                int max = Math.min(offer.maximumDistanceBlocks(), offer.maximumDistanceFor(KING_TYPE));
+                int max = Math.min(offer.maximumDistanceBlocks(), offer.maximumDistanceFor(typeId));
                 return max > 0 && distance >= square(offer.minimumDistanceBlocks())
                         && distance <= square(max);
             }
@@ -341,97 +332,23 @@ public final class ExtraEntityRenderer {
     }
 
     /** Give GeckoLib's native King trigger packets the same long-lived controller. */
-    public Object animationCacheForNativeKing(Entity nativeKing) {
+    public Object animationCacheForNative(Entity nativeKing) {
         if (nativeKing == null || Minecraft.getInstance().level == null
                 || Minecraft.getInstance().level.getEntity(nativeKing.getId()) != nativeKing
-                || !KING_TYPE.equals(BuiltInRegistries.ENTITY_TYPE.getKey(nativeKing.getType()).toString())) {
+                || DistantEntityVisualHooks.adapter(BuiltInRegistries.ENTITY_TYPE.getKey(nativeKing.getType()).toString()) == null) {
             return null;
         }
         ProxyEntry entry = proxies.get(nativeKing.getUUID());
         return entry != null && entry.level == nativeKing.level() ? entry.animationCache : null;
     }
 
-    private static void syncNativeKingState(Entity source, Entity destination) {
+    private static void syncNativeState(Entity source, Entity destination) {
         var data = source.getEntityData().getNonDefaultValues();
         if (data != null) {
             destination.getEntityData().assignValues(data);
         }
-        // getNonDefaultValues() omits changes back to default. Explicitly
-        // sync RoyalFlying both ways, including true after a grounded attack,
-        // so the persistent proxy never keeps the wrong locomotion loop.
-        if (source instanceof KingFlyingVisualAccess nativeFlight
-                && destination instanceof KingFlyingVisualAccess proxyFlight) {
-            boolean flying = nativeFlight.seeuExtra$isRoyalFlying();
-            if (proxyFlight.seeuExtra$isRoyalFlying() != flying) {
-                proxyFlight.seeuExtra$setRoyalFlying(flying);
-            }
-        }
-        // Likewise BEAM_ACTIVE defaults to false: clear stale beam endpoints.
-        KingBeamState.copy(source, destination);
         if (source instanceof LivingEntity real && destination instanceof LivingEntity proxy) {
             proxy.setHealth(real.getHealth());
-        }
-    }
-
-    /**
-     * Antarchy is an optional runtime dependency, not a compile dependency.
-     * Its public beam API lets us mirror all three head beams without
-     * modifying vanilla/NeoVoxy rendering or restarting GeckoLib controllers.
-     */
-    private static final class KingBeamState {
-        private static final Object[] SLOTS;
-        private static final Method GET_END;
-        private static final Method SET_END;
-        private static boolean usable = true;
-
-        static {
-            Object[] slots = new Object[0];
-            Method get = null;
-            Method set = null;
-            try {
-                Class<?> boss = Class.forName(
-                        "com.craisinlord.antarchy.content.entity.royal.RoyalBossEntity");
-                Class<?> slot = Class.forName(
-                        "com.craisinlord.antarchy.content.entity.royal.RoyalHead$Slot");
-                slots = slot.getEnumConstants();
-                get = boss.getMethod("getRoyalBeamEndPosition", slot);
-                set = boss.getMethod("setRoyalBeamEndPosition", slot, Vec3.class);
-            } catch (ReflectiveOperationException | LinkageError failure) {
-                LOGGER.warn("Cannot synchronize optional Antarchy King beam visuals", failure);
-            }
-            SLOTS = slots;
-            GET_END = get;
-            SET_END = set;
-        }
-
-        private static void copy(Entity source, Entity destination) {
-            if (!usable || GET_END == null || SET_END == null) return;
-            try {
-                for (Object slot : SLOTS) {
-                    // A null end is important: it clears a previously active
-                    // beam instead of leaving the last synced coordinates.
-                    Vec3 end = (Vec3) GET_END.invoke(source, slot);
-                    SET_END.invoke(destination, slot, end);
-                }
-            } catch (ReflectiveOperationException | RuntimeException failure) {
-                disable(failure);
-            }
-        }
-
-        private static void clear(Entity destination) {
-            if (!usable || SET_END == null) return;
-            try {
-                for (Object slot : SLOTS) {
-                    SET_END.invoke(destination, slot, (Vec3) null);
-                }
-            } catch (ReflectiveOperationException | RuntimeException failure) {
-                disable(failure);
-            }
-        }
-
-        private static void disable(Exception failure) {
-            usable = false;
-            LOGGER.warn("Disabling Antarchy beam-state sync after an unexpected API mismatch", failure);
         }
     }
 
@@ -454,7 +371,7 @@ public final class ExtraEntityRenderer {
         entity.noPhysics = true;
         entity.setNoGravity(true);
         Object animationCache = null;
-        if (KING_TYPE.equals(snapshot.typeId())) {
+        if (true) {
             try {
                 animationCache = entity.getClass().getMethod("getAnimatableInstanceCache").invoke(entity);
             } catch (ReflectiveOperationException | LinkageError failure) {
@@ -465,13 +382,13 @@ public final class ExtraEntityRenderer {
     }
 
     private static void applyPosition(Entity entity, InterpolatedEntityState state,
-                                      int animationTick, Entity liveKing) {
-        Vec3 position = liveKing == null ? state.position() : liveKing.position();
-        float bodyYaw = liveKing == null ? state.bodyYaw()
-                : liveKing instanceof LivingEntity living ? living.yBodyRot : liveKing.getYRot();
-        float headYaw = liveKing == null ? state.headYaw()
-                : liveKing instanceof LivingEntity living ? living.getYHeadRot() : liveKing.getYRot();
-        float pitch = liveKing == null ? state.pitch() : liveKing.getXRot();
+                                      int animationTick, Entity liveNative) {
+        Vec3 position = liveNative == null ? state.position() : liveNative.position();
+        float bodyYaw = liveNative == null ? state.bodyYaw()
+                : liveNative instanceof LivingEntity living ? living.yBodyRot : liveNative.getYRot();
+        float headYaw = liveNative == null ? state.headYaw()
+                : liveNative instanceof LivingEntity living ? living.getYHeadRot() : liveNative.getYRot();
+        float pitch = liveNative == null ? state.pitch() : liveNative.getXRot();
         entity.setOldPosAndRot();
         entity.xo = position.x;
         entity.yo = position.y;
@@ -558,7 +475,7 @@ public final class ExtraEntityRenderer {
     }
 
     private static final class ProxyEntry {
-        private boolean nativeKingPresent;
+        private boolean nativeStatePresent;
         private final ClientLevel level;
         private final String typeId;
         private final Entity entity;

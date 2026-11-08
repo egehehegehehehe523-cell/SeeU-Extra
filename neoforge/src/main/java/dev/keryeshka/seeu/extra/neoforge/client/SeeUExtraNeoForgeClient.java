@@ -79,8 +79,8 @@ public final class SeeUExtraNeoForgeClient {
                 event.getFrustum(),
                 event.getPartialTick().getGameTimeDeltaPartialTick(false),
                 offer,
-                (typeId, entity, position, draw) -> VoxyKingDepthBridge.submit(
-                        typeId, position, event.getCamera().getPosition(),
+                (typeId, entity, position, draw) -> VoxyEntityDepthBridge.submit(
+                        typeId, entity, position, event.getCamera().getPosition(),
                         event.getModelViewMatrix(), event.getProjectionMatrix(),
                         consumers, draw)
         );
@@ -88,13 +88,13 @@ public final class SeeUExtraNeoForgeClient {
     }
 
     /** Client-only bridge used by the optional Antarchy renderer/cache mixins. */
-    public static boolean ownsNativeKingRender(Entity entity) {
+    public static boolean ownsNativeRender(Entity entity) {
         return renderer != null && configuration != null
-                && renderer.ownsKingRender(entity, configuration.offer());
+                && renderer.ownsNativeRender(entity, configuration.offer());
     }
 
-    public static Object animationCacheForNativeKing(Entity entity) {
-        return renderer == null ? null : renderer.animationCacheForNativeKing(entity);
+    public static Object animationCacheForNative(Entity entity) {
+        return renderer == null ? null : renderer.animationCacheForNative(entity);
     }
 
     private static void clear() {

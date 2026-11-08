@@ -1,6 +1,8 @@
 package dev.keryeshka.seeu.extra.neoforge.client;
 
 import dev.keryeshka.seeu.extra.client.ShaderPackState;
+import dev.keryeshka.seeu.extra.client.DistantEntityVisualHooks;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.Vec3;
@@ -21,10 +23,9 @@ import java.lang.reflect.Method;
  * Minecraft mixins. It brackets ONLY the King's batch, and scissors the depth
  * passes to the conservative projected bounds of its animated model.
  */
-public final class VoxyKingDepthBridge {
+public final class VoxyEntityDepthBridge {
     private static final Logger LOGGER = LoggerFactory.getLogger("SeeU Extra");
-    private static final String KING_TYPE = "antarchy:king";
-    private static final float MODEL_MARGIN = 96.0F;
+
     private static final float[] FULL_SCREEN = {-1.0F, -1.0F, 1.0F, 1.0F};
     private static final Method BEGIN_IN_PLACE;
     private static final Method END_IN_PLACE;
@@ -36,7 +37,7 @@ public final class VoxyKingDepthBridge {
         try {
             Class<?> shim = Class.forName(
                     "me.cortex.voxy.client.compat.sable.VoxySableDepthShim",
-                    false, VoxyKingDepthBridge.class.getClassLoader());
+                    false, VoxyEntityDepthBridge.class.getClassLoader());
             begin = shim.getMethod("beginInPlace", Matrix4f.class, Matrix4f.class, float[].class);
             end = shim.getMethod("endInPlace");
         } catch (ReflectiveOperationException | LinkageError ignored) {
@@ -46,14 +47,14 @@ public final class VoxyKingDepthBridge {
         END_IN_PLACE = end;
     }
 
-    private VoxyKingDepthBridge() {}
+    private VoxyEntityDepthBridge() {}
 
     public static void submit(
-            String typeId, Vec3 position, Vec3 cameraPosition,
+            String typeId, Entity entity, Vec3 position, Vec3 cameraPosition,
             Matrix4f modelView, Matrix4f projection,
             MultiBufferSource.BufferSource consumers, Runnable draw
     ) {
-        if (!KING_TYPE.equals(typeId) || !ShaderPackState.isActive()
+        if (!ShaderPackState.isActive()
                 || !beyondNativeChunks(position, cameraPosition) || broken) {
             draw.run();
             return;
@@ -71,7 +72,10 @@ public final class VoxyKingDepthBridge {
         // the depth attachment; flush the King's model while the merged depth
         // is live, not later in the generic AFTER_ENTITIES endBatch.
         consumers.endBatch();
-        float[] bounds = projectedBounds(position, cameraPosition, modelView, projection);
+        DistantEntityVisualHooks.Adapter adapter = DistantEntityVisualHooks.adapter(typeId);
+        float margin = adapter != null ? (float) adapter.renderMargin(entity)
+                : (float) Math.max(4.0D, entity.getBbWidth() * 2.0D);
+        float[] bounds = projectedBounds(position, cameraPosition, modelView, projection, margin);
         boolean began = false;
         try {
             BEGIN_IN_PLACE.invoke(null, new Matrix4f(modelView), new Matrix4f(projection), bounds);
@@ -101,7 +105,7 @@ public final class VoxyKingDepthBridge {
     }
 
     private static float[] projectedBounds(
-            Vec3 position, Vec3 camera, Matrix4f modelView, Matrix4f projection
+            Vec3 position, Vec3 camera, Matrix4f modelView, Matrix4f projection, float modelMargin
     ) {
         Matrix4f vp = new Matrix4f(projection).mul(modelView);
         double cx = position.x - camera.x;
@@ -115,9 +119,9 @@ public final class VoxyKingDepthBridge {
             for (int y = -1; y <= 1; y += 2) {
                 for (int z = -1; z <= 1; z += 2) {
                     Vector4f clip = vp.transform(new Vector4f(
-                            (float) (cx + x * MODEL_MARGIN),
-                            (float) (cy + y * MODEL_MARGIN),
-                            (float) (cz + z * MODEL_MARGIN), 1));
+                            (float) (cx + x * modelMargin),
+                            (float) (cy + y * modelMargin),
+                            (float) (cz + z * modelMargin), 1));
                     if (!(clip.w > 0.001F) || !Float.isFinite(clip.w)) {
                         return FULL_SCREEN;
                     }

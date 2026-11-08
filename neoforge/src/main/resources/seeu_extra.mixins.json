@@ -3,16 +3,7 @@
   "minVersion": "0.8",
   "package": "dev.keryeshka.seeu.extra.neoforge.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": [
-    "KingIdleWanderMixin",
-    "KingGlobalBossBarMixin",
-    "KingDecreeCooldownMixin"
-  ],
-  "client": [
-    "KingAnimationCacheMixin",
-    "RoyalBossRendererMixin"
-  ],
-  "injectors": {
-    "defaultRequire": 0
-  }
+  "mixins": [],
+  "client": [],
+  "injectors": { "defaultRequire": 0 }
 }
