@@ -28,7 +28,7 @@ public final class SeeUExtraServerEndpoint implements ServerAddonEndpoint {
     public SeeUExtraServerEndpoint(SeeUExtraServerConfig config, KingTicketAccess ticketAccess) {
         this.broadcaster = new ExtraEntityBroadcaster(
                 config.settings(), config.liveKingTicking, ticketAccess,
-                config.persistentKingSimulation);
+                config.persistentKingSimulation, config.kingDistantPlayerDecrees);
     }
 
     @Override

@@ -34,6 +34,9 @@ public final class SeeUExtraServerConfig {
     // simulate flight without chunk tickets until naturally ticking terrain is close.
     // Overrides legacy liveKingTicking for the King when enabled.
     public boolean persistentKingSimulation = true;
+    // Offloaded King can proclaim Kneel, Do Not Run, Stand Tall and Stand Your
+    // Ground within 32 chunks. Combat decrees require the real entity.
+    public boolean kingDistantPlayerDecrees = true;
     // NeoForge only: test a low-priority flight waypoint if the King remains
     // stationary without a target, without overriding his combat behavior.
     public boolean kingIdleWanderFallback = true;

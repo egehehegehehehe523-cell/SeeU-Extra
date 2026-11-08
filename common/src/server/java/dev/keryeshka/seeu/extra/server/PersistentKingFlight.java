@@ -50,13 +50,19 @@ public final class PersistentKingFlight {
     private static final double WORLD_EDGE = 29_999_744.0D;
 
     private final boolean enabled;
+    private final DistantKingDecrees distantDecrees;
     private final Map<ServerLevel, UUID> lastLiveKing = new IdentityHashMap<>();
     private final Map<ServerLevel, UUID> currentTarget = new IdentityHashMap<>();
     private final Map<ServerLevel, ServerBossEvent> distantBossBars = new IdentityHashMap<>();
     private int discoveryTicks;
 
     public PersistentKingFlight(boolean enabled) {
+        this(enabled, true);
+    }
+
+    public PersistentKingFlight(boolean enabled, boolean playerStateDecrees) {
         this.enabled = enabled;
+        this.distantDecrees = enabled && playerStateDecrees ? new DistantKingDecrees() : null;
     }
 
     public void tick(MinecraftServer server) {
@@ -77,6 +83,9 @@ public final class PersistentKingFlight {
                 }
                 simulate(server, level, data);
             } else {
+                if (distantDecrees != null) {
+                    distantDecrees.clear(level);
+                }
                 findAndOffload(server, level, data);
             }
         }
@@ -245,7 +254,16 @@ public final class PersistentKingFlight {
         if (player != null && withinActivationDistance(server, data, player)
                 && tryRestore(level, data)) {
             currentTarget.remove(level);
+            if (distantDecrees != null) {
+                distantDecrees.clear(level);
+            }
             return;
+        }
+
+        // Only these four player-state decrees run without the real entity.
+        // Combat decrees, attacks and summons always wait for native AI.
+        if (distantDecrees != null) {
+            distantDecrees.tick(level, data.x, data.y, data.z);
         }
 
         double desiredYaw;

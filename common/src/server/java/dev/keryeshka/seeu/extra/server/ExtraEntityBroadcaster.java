@@ -69,19 +69,26 @@ public final class ExtraEntityBroadcaster {
     public ExtraEntityBroadcaster(
             ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess
     ) {
-        this(settings, liveKingTicking, ticketAccess, false);
+        this(settings, liveKingTicking, ticketAccess, false, false);
     }
 
     public ExtraEntityBroadcaster(
             ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess,
             boolean persistentKingSimulation
     ) {
+        this(settings, liveKingTicking, ticketAccess, persistentKingSimulation, true);
+    }
+
+    public ExtraEntityBroadcaster(
+            ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess,
+            boolean persistentKingSimulation, boolean kingDistantPlayerDecrees
+    ) {
         this.settings = settings;
         // Persistent flight never loads a distant chunk. The legacy live-King
         // ticket mode is mutually exclusive with the persistent simulation.
         this.liveKingTicking = liveKingTicking && !persistentKingSimulation;
         this.kingTickets = new DistantKingTickManager(ticketAccess);
-        this.persistentKing = new PersistentKingFlight(persistentKingSimulation);
+        this.persistentKing = new PersistentKingFlight(persistentKingSimulation, kingDistantPlayerDecrees);
     }
 
     public void updateSettings(ExtraServerSettings settings) {
