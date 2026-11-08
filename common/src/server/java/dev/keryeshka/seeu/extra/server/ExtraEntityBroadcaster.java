@@ -382,18 +382,33 @@ public final class ExtraEntityBroadcaster {
                 }
                 snapshots.add(snapshot);
             }
-            // A single persistent King snapshot replaces his discarded live
-            // entity while it is cruising through chunks which never load.
+            // One global boss must not lose his persistent visual simply
+            // because the nearest-N queue is full of ordinary mobs.
+            // This also bridges native tracking without changing renderer.
+            if (settings.selector().selects(KING_TYPE)) {
+                int kingMaximum = Math.min(maximumDistance, offer.maximumDistanceFor(KING_TYPE));
+                if (kingMaximum > 0) {
+                    for (EntitySnapshot cached : snapshotCache.values()) {
+                        if (KING_TYPE.equals(cached.typeId())) {
+                            double distance = distanceSquared(viewer, cached);
+                            if (distance >= square(minimumDistance)
+                                    && distance <= square(kingMaximum)) {
+                                includePriorityKing(snapshots, cached, settings.entityCap());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            // Offloaded flight stays authoritative without loading chunks.
             EntitySnapshot distantKing = persistentKing.snapshot(viewer.serverLevel());
-            if (distantKing != null && snapshots.size() < settings.entityCap()
-                    && !currentlyLoaded.contains(distantKing.uuid())
-                    && settings.selector().selects(KING_TYPE)
-                    && !snapshots.stream().anyMatch(s -> s.uuid().equals(distantKing.uuid()))) {
+            if (distantKing != null && !currentlyLoaded.contains(distantKing.uuid())
+                    && settings.selector().selects(KING_TYPE)) {
                 int kingMaximum = Math.min(maximumDistance, offer.maximumDistanceFor(KING_TYPE));
                 if (kingMaximum > 0) {
                     double distance = distanceSquared(viewer, distantKing);
                     if (distance >= square(minimumDistance) && distance <= square(kingMaximum)) {
-                        snapshots.add(distantKing);
+                        includePriorityKing(snapshots, distantKing, settings.entityCap());
                     }
                 }
             }
@@ -501,6 +516,19 @@ public final class ExtraEntityBroadcaster {
                         Math.round(Math.sqrt(distanceSquared(viewer, cached.snapshot()))));
             }
         }
+    }
+
+    private static void includePriorityKing(
+            List<EntitySnapshot> snapshots, EntitySnapshot king, int cap
+    ) {
+        if (cap <= 0 || snapshots.stream().anyMatch(s -> s.uuid().equals(king.uuid()))) {
+            return;
+        }
+        if (snapshots.size() >= cap) {
+            // Displace an ordinary snapshot, never increase the packet cap.
+            snapshots.remove(snapshots.size() - 1);
+        }
+        snapshots.add(king);
     }
 
     private static double distanceSquared(ServerPlayer viewer, EntitySnapshot snapshot) {
