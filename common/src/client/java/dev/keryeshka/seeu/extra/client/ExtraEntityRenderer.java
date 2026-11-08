@@ -40,6 +40,7 @@ public final class ExtraEntityRenderer {
     private final ExtraEntityTracker tracker;
     private final Map<UUID, ProxyEntry> proxies = new HashMap<>();
     private final Set<String> quarantinedTypes = new HashSet<>();
+    private final Set<String> loggedBeyondVanillaTypes = new HashSet<>();
     private final Map<UUID, Entity> realEntities = new HashMap<>();
     private long frame;
     private boolean loggedFirstSubmission;
@@ -51,6 +52,7 @@ public final class ExtraEntityRenderer {
     public void clear() {
         proxies.clear();
         quarantinedTypes.clear();
+        loggedBeyondVanillaTypes.clear();
         realEntities.clear();
         frame = 0;
         loggedFirstSubmission = false;
@@ -130,7 +132,17 @@ public final class ExtraEntityRenderer {
                 }
                 Entity renderEntity = proxy.entity;
 
-                if (!shouldRenderBeyondVanillaDistance(renderEntity, frustum)) {
+                boolean frustumVisible = shouldRenderBeyondVanillaDistance(renderEntity, frustum);
+                double horizontalX = Math.abs(cameraPosition.x - state.position().x);
+                double horizontalZ = Math.abs(cameraPosition.z - state.position().z);
+                if (Math.max(horizontalX, horizontalZ)
+                        > minecraft.options.getEffectiveRenderDistance() * 16.0D
+                        && loggedBeyondVanillaTypes.add(snapshot.typeId())) {
+                    LOGGER.info(
+                            "SeeU Extra proxy beyond normal chunks: type={}, distance={}, frustumVisible={}",
+                            snapshot.typeId(), Math.round(Math.sqrt(distanceSquared)), frustumVisible);
+                }
+                if (!frustumVisible) {
                     continue;
                 }
                 Vec3 position = state.position();
