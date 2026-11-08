@@ -95,33 +95,38 @@ public final class ExtraEntityRenderer {
                 continue;
             }
             Entity vanillaEntity = realEntities.get(snapshot.uuid());
-            if (vanillaEntity != null && isCoveredByVanilla(
+            // Keep an existing proxy alive while vanilla renders the same entity.
+            // Discarding it at each handoff destroys GeckoLib's per-entity
+            // controller cache, so wing/locomotion animations restart at frame 0.
+            boolean vanillaCovered = vanillaEntity != null && isCoveredByVanilla(
                     dispatcher,
                     vanillaEntity,
                     frustum,
                     cameraPosition
-            )) {
-                proxies.remove(snapshot.uuid());
-                continue;
-            }
+            );
             if (quarantinedTypes.contains(snapshot.typeId())) {
                 continue;
             }
 
             try {
-                // A vanilla entity can remain in the client entity collection after
-                // it has stopped receiving updates. Always advance a snapshot-backed
-                // proxy beyond the vanilla handoff, even if that stale entity exists.
                 ProxyEntry proxy = proxies.get(snapshot.uuid());
+                if (vanillaCovered && proxy == null) {
+                    continue;
+                }
                 if (proxy == null || proxy.level != level || !proxy.typeId.equals(snapshot.typeId())) {
                     proxy = createProxy(level, snapshot);
                     proxies.put(snapshot.uuid(), proxy);
                 }
                 proxy.lastSeenFrame = currentFrame;
-                applyPosition(proxy.entity, state);
+                // Like SeeU's player proxies, use the client's continuously
+                // ticking clock rather than a periodically replaced packet age.
+                applyPosition(proxy.entity, state, viewer.tickCount);
                 if (proxy.appliedRevision != state.revision()) {
                     applySnapshotState(proxy.entity, snapshot);
                     proxy.appliedRevision = state.revision();
+                }
+                if (vanillaCovered) {
+                    continue;
                 }
                 Entity renderEntity = proxy.entity;
 
@@ -214,7 +219,7 @@ public final class ExtraEntityRenderer {
         return new ProxyEntry(level, snapshot.typeId(), entity);
     }
 
-    private static void applyPosition(Entity entity, InterpolatedEntityState state) {
+    private static void applyPosition(Entity entity, InterpolatedEntityState state, int animationTick) {
         Vec3 position = state.position();
         entity.setOldPosAndRot();
         entity.xo = position.x;
@@ -234,7 +239,7 @@ public final class ExtraEntityRenderer {
             living.setYHeadRot(state.headYaw());
             living.yHeadRotO = state.headYaw();
         }
-        entity.tickCount = state.age();
+        entity.tickCount = animationTick;
     }
 
     private static void applySnapshotState(Entity entity, EntitySnapshot snapshot) {
