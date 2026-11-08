@@ -36,6 +36,25 @@ public abstract class KingIdleWanderMixin {
     @Unique private boolean seeuExtra$steering;
     @Unique private int seeuExtra$recoveryTicks;
 
+    /**
+     * The persistent-flight King must have exactly one idle-flight controller.
+     * Neutralize the native patrol's pending waypoint and previous velocity
+     * before it can compete with our continuous directional flight. Combat
+     * takes over unchanged as soon as Antarchy acquires a target.
+     */
+    @Inject(method = "tick", at = @At("HEAD"), remap = false, require = 0)
+    private void seeuExtra$beginIdleFlight(CallbackInfo ci) {
+        Mob king = (Mob) (Object) this;
+        if (!KingWanderOptions.globalRoam || !(king.level() instanceof ServerLevel)
+                || !king.isAlive() || king.isNoAi() || king.getTarget() != null) {
+            return;
+        }
+        king.getNavigation().stop();
+        king.getMoveControl().setWantedPosition(
+                king.getX(), king.getY(), king.getZ(), 0.0D);
+        king.setDeltaMovement(Vec3.ZERO);
+    }
+
     @Inject(method = "tick", at = @At("TAIL"), remap = false, require = 0)
     private void seeuExtra$directionalIdleFlight(CallbackInfo ci) {
         Mob king = (Mob) (Object) this;
@@ -47,11 +66,18 @@ public abstract class KingIdleWanderMixin {
         }
 
         Vec3 position = king.position();
-        if (seeuExtra$lastPosition != null
-                && position.distanceToSqr(seeuExtra$lastPosition) < seeuExtra$minProgressSquared) {
-            ++seeuExtra$stationaryTicks;
-        } else {
+        boolean madeProgress = seeuExtra$lastPosition != null
+                && position.distanceToSqr(seeuExtra$lastPosition) >= seeuExtra$minProgressSquared;
+        if (madeProgress) {
             seeuExtra$stationaryTicks = 0;
+            // Native patrol recovered; do not run the fallback against
+            // Antarchy's own MoveControl for another 100 ticks.
+            if (!KingWanderOptions.globalRoam && seeuExtra$steering) {
+                seeuExtra$reset();
+                return;
+            }
+        } else if (seeuExtra$lastPosition != null) {
+            ++seeuExtra$stationaryTicks;
         }
         seeuExtra$lastPosition = position;
 
@@ -77,12 +103,19 @@ public abstract class KingIdleWanderMixin {
             seeuExtra$headingTicks = 0;
         }
         if (seeuExtra$heading == null || --seeuExtra$headingTicks <= 0) {
-            double angle = king.getRandom().nextDouble() * Math.PI * 2.0D;
+            // First handoff inherits the heading the distant flight was using.
+            // Choosing a completely random angle here makes the King visibly
+            // spin/jitter at the moment the real entity becomes active.
+            double angle = seeuExtra$heading == null && KingWanderOptions.globalRoam
+                    ? (king.getYRot() * Mth.DEG_TO_RAD)
+                    : king.getRandom().nextDouble() * Math.PI * 2.0D;
             double rise = king.getRandom().nextDouble() * 0.32D - 0.16D;
             if (seeuExtra$stationaryTicks >= 30) {
                 rise = 0.25D;
             }
-            seeuExtra$heading = new Vec3(Math.cos(angle), rise, Math.sin(angle)).normalize();
+            seeuExtra$heading = KingWanderOptions.globalRoam
+                    ? new Vec3(-Math.sin(angle), rise, Math.cos(angle)).normalize()
+                    : new Vec3(Math.cos(angle), rise, Math.sin(angle)).normalize();
             seeuExtra$headingTicks = 180 + king.getRandom().nextInt(260);
         }
 
@@ -107,8 +140,14 @@ public abstract class KingIdleWanderMixin {
                 Math.cos(radians) * seeuExtra$cruiseSpeed
         );
 
-        // Only used within real ticking terrain. Distant movement is simulated
-        // independently in PersistentKingFlight without collision or chunk queries.
+        // Native patrol may have issued another waypoint at the end of its
+        // tick. Clear it so no stale waypoint accelerates the King next tick.
+        // No Minecraft/NeoVoxy mixin and no unloaded-chunk queries.
+        if (KingWanderOptions.globalRoam) {
+            king.getNavigation().stop();
+            king.getMoveControl().setWantedPosition(
+                    position.x, position.y, position.z, 0.0D);
+        }
         king.move(MoverType.SELF, step);
         king.setDeltaMovement(step);
         king.hasImpulse = true;
