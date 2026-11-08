@@ -34,6 +34,7 @@ public abstract class KingIdleWanderMixin {
     @Unique private int seeuExtra$headingTicks;
     @Unique private int seeuExtra$stationaryTicks;
     @Unique private boolean seeuExtra$steering;
+    @Unique private int seeuExtra$recoveryTicks;
 
     @Inject(method = "tick", at = @At("TAIL"), remap = false, require = 0)
     private void seeuExtra$directionalIdleFlight(CallbackInfo ci) {
@@ -59,6 +60,15 @@ public abstract class KingIdleWanderMixin {
         if (!KingWanderOptions.globalRoam && !seeuExtra$steering
                 && (!KingWanderOptions.enabled || seeuExtra$stationaryTicks < 120)) {
             return;
+        }
+        if (!KingWanderOptions.globalRoam) {
+            if (!seeuExtra$steering) {
+                // A bounded escape nudge, not perpetual world roaming.
+                seeuExtra$recoveryTicks = 100;
+            } else if (--seeuExtra$recoveryTicks <= 0) {
+                seeuExtra$reset();
+                return;
+            }
         }
         seeuExtra$steering = true;
 
@@ -109,5 +119,6 @@ public abstract class KingIdleWanderMixin {
         seeuExtra$headingTicks = 0;
         seeuExtra$stationaryTicks = 0;
         seeuExtra$steering = false;
+        seeuExtra$recoveryTicks = 0;
     }
 }
