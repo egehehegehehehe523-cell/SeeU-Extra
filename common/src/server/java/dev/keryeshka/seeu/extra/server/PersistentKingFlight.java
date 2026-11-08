@@ -1,5 +1,6 @@
 package dev.keryeshka.seeu.extra.server;
 
+import dev.keryeshka.seeu.extra.config.ExtraServerSettings;
 import dev.keryeshka.seeu.extra.protocol.EntitySnapshot;
 import dev.keryeshka.seeu.extra.protocol.EntitySnapshotPacket;
 import dev.keryeshka.seeu.extra.protocol.ExtraPacketCodec;
@@ -9,6 +10,9 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.BossEvent;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -17,9 +21,12 @@ import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -45,6 +52,7 @@ public final class PersistentKingFlight {
     private final boolean enabled;
     private final Map<ServerLevel, UUID> lastLiveKing = new IdentityHashMap<>();
     private final Map<ServerLevel, UUID> currentTarget = new IdentityHashMap<>();
+    private final Map<ServerLevel, ServerBossEvent> distantBossBars = new IdentityHashMap<>();
     private int discoveryTicks;
 
     public PersistentKingFlight(boolean enabled) {
@@ -93,6 +101,70 @@ public final class PersistentKingFlight {
         );
     }
 
+    /**
+     * A lightweight boss event for an offloaded King. This does not instantiate,
+     * tick or load the real entity. Visibility uses the exact viewer opt-in and
+     * range agreed by SeeU Extra, including per-entity distance limits.
+     */
+    public void updateBossBars(
+            Collection<? extends ExtraViewerSession> sessions, ExtraServerSettings settings
+    ) {
+        Map<ServerLevel, Set<ServerPlayer>> wanted = new IdentityHashMap<>();
+        if (enabled && settings.enabled() && settings.selector().selects(KING_TYPE)) {
+            for (ExtraViewerSession session : sessions) {
+                if (session == null || session.offer() == null || !session.offer().enabled()) {
+                    continue;
+                }
+                ServerPlayer player = session.player();
+                if (player == null || player.isRemoved()) {
+                    continue;
+                }
+                int maximum = Math.min(settings.maximumDistanceBlocks(),
+                        Math.min(session.offer().maximumDistanceBlocks(),
+                                session.offer().maximumDistanceFor(KING_TYPE)));
+                int minimum = Math.max(settings.minimumDistanceBlocks(),
+                        session.offer().minimumDistanceBlocks());
+                if (maximum <= 0 || minimum > maximum) {
+                    continue;
+                }
+                ServerLevel level = player.serverLevel();
+                KingData data = state(level);
+                if (!data.offloaded || data.base == null) {
+                    continue;
+                }
+                double dx = player.getX() - data.x;
+                double dy = player.getY() - data.y;
+                double dz = player.getZ() - data.z;
+                double distanceSquared = dx * dx + dy * dy + dz * dz;
+                if (distanceSquared >= (double) minimum * minimum
+                        && distanceSquared <= (double) maximum * maximum) {
+                    wanted.computeIfAbsent(level, ignored -> new HashSet<>()).add(player);
+                }
+            }
+        }
+        for (Map.Entry<ServerLevel, ServerBossEvent> entry : distantBossBars.entrySet()) {
+            Set<ServerPlayer> expected = wanted.getOrDefault(entry.getKey(), Set.of());
+            for (ServerPlayer current : Set.copyOf(entry.getValue().getPlayers())) {
+                if (!expected.contains(current)) {
+                    entry.getValue().removePlayer(current);
+                }
+            }
+        }
+        for (Map.Entry<ServerLevel, Set<ServerPlayer>> entry : wanted.entrySet()) {
+            ServerBossEvent bar = distantBossBars.computeIfAbsent(entry.getKey(),
+                    ignored -> new ServerBossEvent(
+                            Component.translatable("entity.antarchy.king"),
+                            BossEvent.BossBarColor.YELLOW, BossEvent.BossBarOverlay.PROGRESS));
+            bar.setProgress(state(entry.getKey()).healthFraction);
+            for (ServerPlayer player : entry.getValue()) {
+                if (!bar.getPlayers().contains(player)) {
+                    bar.addPlayer(player);
+                }
+            }
+        }
+        distantBossBars.entrySet().removeIf(entry -> entry.getValue().getPlayers().isEmpty());
+    }
+
     private static KingData state(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(
                 new SavedData.Factory<>(KingData::new, KingData::load, null), DATA_NAME);
@@ -134,7 +206,7 @@ public final class PersistentKingFlight {
                 return; // Never discard a King whose full boss state could not be saved.
             }
             base = ExtraEntityBroadcaster.captureKingSnapshot(king);
-            data.capture(entityTag, base);
+            data.capture(entityTag, base, king.getHealth() / Math.max(1.0F, king.getMaxHealth()));
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("Could not serialize King flight state; keeping the real King alive", failure);
             return;
@@ -314,9 +386,11 @@ public final class PersistentKingFlight {
         private float yaw, wanderYaw;
         private double wanderRise, wanderAltitude;
         private int age, wanderTicks;
+        private float healthFraction = 1.0F;
 
-        private void capture(CompoundTag serialized, EntitySnapshot initial) {
+        private void capture(CompoundTag serialized, EntitySnapshot initial, float healthFraction) {
             entityTag = serialized.copy();
+            this.healthFraction = Mth.clamp(healthFraction, 0.0F, 1.0F);
             base = initial;
             x = initial.x(); y = initial.y(); z = initial.z();
             vx = initial.velocityX(); vy = initial.velocityY(); vz = initial.velocityZ();
@@ -362,6 +436,8 @@ public final class PersistentKingFlight {
                 result.wanderAltitude = tag.getDouble("WanderAltitude");
                 result.wanderTicks = tag.getInt("WanderTicks");
                 result.age = tag.getInt("Age");
+                result.healthFraction = tag.contains("HealthFraction")
+                        ? Mth.clamp(tag.getFloat("HealthFraction"), 0.0F, 1.0F) : 1.0F;
                 result.offloaded = !result.entityTag.isEmpty()
                         && Double.isFinite(result.x) && Double.isFinite(result.y)
                         && Double.isFinite(result.z);
@@ -386,6 +462,7 @@ public final class PersistentKingFlight {
                 tag.putDouble("WanderAltitude", wanderAltitude);
                 tag.putInt("WanderTicks", wanderTicks);
                 tag.putInt("Age", age);
+                tag.putFloat("HealthFraction", healthFraction);
             }
             return tag;
         }
