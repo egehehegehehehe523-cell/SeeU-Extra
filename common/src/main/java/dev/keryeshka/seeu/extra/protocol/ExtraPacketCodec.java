@@ -23,6 +23,11 @@ public final class ExtraPacketCodec {
             writeVarInt(buffer, offer.maximumDistanceBlocks());
             writeVarInt(buffer, offer.minimumDistanceBlocks());
             writeVarInt(buffer, offer.entityViewScaleQ10());
+            writeVarInt(buffer, offer.entityDistances().size());
+            for (var entry : offer.entityDistances().entrySet()) {
+                writeUtf(buffer, entry.getKey(), ExtraProtocol.MAX_RESOURCE_IDENTIFIER_BYTES);
+                writeVarInt(buffer, entry.getValue());
+            }
             return copyPayload(buffer);
         } finally {
             buffer.release();
@@ -32,12 +37,30 @@ public final class ExtraPacketCodec {
     public static ClientOffer decodeClientOffer(byte[] payload) {
         ByteBuf buffer = wrapPayload(payload);
         try {
+            int protocolVersion = readVarInt(buffer);
+            boolean enabled = readBoolean(buffer);
+            int maximumDistanceBlocks = readVarInt(buffer);
+            int minimumDistanceBlocks = readVarInt(buffer);
+            int entityViewScaleQ10 = readVarInt(buffer);
+            int typeCount = readVarInt(buffer);
+            if (typeCount > ExtraProtocol.MAX_CONFIGURED_ENTITY_TYPES) {
+                throw new IllegalArgumentException("Too many configured entity types");
+            }
+            java.util.Map<String, Integer> ranges = new java.util.HashMap<>();
+            for (int index = 0; index < typeCount; index++) {
+                String typeId = readUtf(buffer, ExtraProtocol.MAX_RESOURCE_IDENTIFIER_BYTES);
+                int range = readVarInt(buffer);
+                if (ranges.putIfAbsent(typeId, range) != null) {
+                    throw new IllegalArgumentException("Duplicate entity type in offer");
+                }
+            }
             ClientOffer offer = new ClientOffer(
-                    readVarInt(buffer),
-                    readBoolean(buffer),
-                    readVarInt(buffer),
-                    readVarInt(buffer),
-                    readVarInt(buffer)
+                    protocolVersion,
+                    enabled,
+                    maximumDistanceBlocks,
+                    minimumDistanceBlocks,
+                    entityViewScaleQ10,
+                    ranges
             );
             requireFullyRead(buffer);
             return offer;
