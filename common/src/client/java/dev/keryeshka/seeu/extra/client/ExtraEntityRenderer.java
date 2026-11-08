@@ -166,11 +166,19 @@ public final class ExtraEntityRenderer {
                         // and phases, while the proxy owns the visual controller.
                         syncNativeKingState(liveKing, proxy.entity);
                         proxy.nativeKingPresent = true;
-                    } else if (proxy.nativeKingPresent) {
-                        // The real King was offloaded/untracked. A former
-                        // attack must never remain on the retained proxy.
-                        KingBeamState.clear(proxy.entity);
-                        proxy.nativeKingPresent = false;
+                    } else {
+                        if (proxy.nativeKingPresent) {
+                            // A former attack must never remain on the proxy.
+                            KingBeamState.clear(proxy.entity);
+                            proxy.nativeKingPresent = false;
+                        }
+                        // Antarchy's ROYAL_FLYING defaults to true. Syncing
+                        // only non-default data can leave a previously grounded
+                        // proxy stuck in an idle/walk animation after a handoff.
+                        if (proxy.entity instanceof KingFlyingVisualAccess flight
+                                && !flight.seeuExtra$isRoyalFlying()) {
+                            flight.seeuExtra$setRoyalFlying(true);
+                        }
                     }
                     renderEntity = proxy.entity;
                     position = liveKing != null ? liveKing.position() : state.position();
@@ -310,9 +318,17 @@ public final class ExtraEntityRenderer {
         if (data != null) {
             destination.getEntityData().assignValues(data);
         }
-        // getNonDefaultValues() intentionally omits changes back to default.
-        // RoyalBossEntity's BEAM_ACTIVE defaults to false, so the normal
-        // entity-data copy alone leaves an old beam stuck on the proxy.
+        // getNonDefaultValues() omits changes back to default. Explicitly
+        // sync RoyalFlying both ways, including true after a grounded attack,
+        // so the persistent proxy never keeps the wrong locomotion loop.
+        if (source instanceof KingFlyingVisualAccess nativeFlight
+                && destination instanceof KingFlyingVisualAccess proxyFlight) {
+            boolean flying = nativeFlight.seeuExtra$isRoyalFlying();
+            if (proxyFlight.seeuExtra$isRoyalFlying() != flying) {
+                proxyFlight.seeuExtra$setRoyalFlying(flying);
+            }
+        }
+        // Likewise BEAM_ACTIVE defaults to false: clear stale beam endpoints.
         KingBeamState.copy(source, destination);
         if (source instanceof LivingEntity real && destination instanceof LivingEntity proxy) {
             proxy.setHealth(real.getHealth());

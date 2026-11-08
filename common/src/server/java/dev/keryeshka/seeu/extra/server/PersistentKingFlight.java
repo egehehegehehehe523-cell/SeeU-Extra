@@ -208,8 +208,11 @@ public final class PersistentKingFlight {
             return;
         }
 
-        double activeRange = Math.max(32.0D,
-                (server.getPlayerList().getSimulationDistance() + 1) * 16.0D);
+        // Offload *before* the last entity-ticking chunk, not after it.
+        // With the old simulationDistance + 1 threshold Minecraft could stop
+        // ticking/unload the real King before SavedData captured his flight.
+        double activeRange = Math.max(16.0D,
+                (server.getPlayerList().getSimulationDistance() - 1) * 16.0D);
         // Rendering / interaction requires the native King near *any*
         // non-spectating player, including Creative-mode testers. Only the
         // chase-target search below should exclude Creative players.
@@ -341,7 +344,9 @@ public final class PersistentKingFlight {
     private static boolean withinActivationDistance(
             MinecraftServer server, KingData state, ServerPlayer player
     ) {
-        double radius = Math.max(32.0D,
+        // Stay inside the offload threshold by one chunk (including for low
+        // simulation distances) to avoid restore/discard ping-pong.
+        double radius = Math.max(8.0D,
                 (server.getPlayerList().getSimulationDistance() - 2) * 16.0D);
         return horizontalDistanceSquared(state.x, state.z, player.getX(), player.getZ())
                 <= radius * radius;
