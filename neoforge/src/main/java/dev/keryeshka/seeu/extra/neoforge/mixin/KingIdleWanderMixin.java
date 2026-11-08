@@ -8,6 +8,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -18,6 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * The King already has an idle patrol; this is a conservative fallback
  * for when its normal flight AI fails to make any horizontal progress.
  */
+@Pseudo
 @Mixin(targets = "com.craisinlord.antarchy.content.entity.royal.KingEntity", remap = false)
 public abstract class KingIdleWanderMixin {
     @Unique private int seeuExtra$stationaryTicks;
