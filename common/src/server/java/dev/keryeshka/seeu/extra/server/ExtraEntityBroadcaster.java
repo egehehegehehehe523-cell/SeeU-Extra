@@ -212,8 +212,9 @@ public final class ExtraEntityBroadcaster {
                 double dx = x - viewer.getX();
                 double dy = y - viewer.getY();
                 double dz = z - viewer.getZ();
-                double distanceSquared = dx * dx + dy * dy + dz * dz;
-                if (distanceSquared <= naturallyTickingDistanceSquared
+                double horizontalDistanceSquared = dx * dx + dz * dz;
+                double distanceSquared = horizontalDistanceSquared + dy * dy;
+                if (horizontalDistanceSquared <= naturallyTickingDistanceSquared
                         || distanceSquared > (double) maximum * maximum) {
                     continue;
                 }
