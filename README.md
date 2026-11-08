@@ -11,7 +11,7 @@ Both Antarchy royals (`antarchy:king` and `antarchy:queen`) have separate, serve
 - Both bosses use SeeU Extra's F8 distance opt-ins and shared shader/LOD-depth correction automatically. Turn the bosses ON in F8 to make them render at distances. The World Bosses mod registers the native-visual adapter independently of the F8 animation toggle.
 - Existing worlds' offloaded King SavedData continues using `seeu_extra_persistent_king`. Queen uses `world_bosses_persistent_queen`. **Back up existing worlds** before testing migration and the new Queen behavior.
 
-The config `config/world-bosses-server.json` controls enabling each boss, roaming, the global boss bars and the King's distant decrees independently from SeeU Extra's own allow/deny lists.
+The config `config/world-bosses-server.json` controls enabling each boss, roaming, the global boss bars and the King's distant decrees independently from SeeU Extra's own allow/deny lists. Queen's **native** global-roam override is off by default to avoid interrupting her distinctive grounded and scripted attacks; her chunk-independent offloaded flight is still enabled. The separate stuck-flight fallback can be changed in this config.
 
 ## Build (Java 21)
 

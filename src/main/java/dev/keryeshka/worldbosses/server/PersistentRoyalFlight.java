@@ -34,9 +34,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Server-authoritative, single-King-per-dimension dormant flight.
+ * Server-authoritative, single royal-boss per dimension dormant flight.
  *
- * A real King is serialized (including Antarchy's custom NBT and health) and
+ * A real royal boss is serialized (including Antarchy's custom NBT and health) and
  * discarded while outside player simulation. Its one logical replacement
  * moves through unloaded coordinates without asking for a chunk or a block.
  * It is restored with the original UUID only after its destination chunk is
@@ -84,7 +84,7 @@ public final class PersistentRoyalFlight {
                 Entity stale = level.getEntity(data.base.uuid());
                 if (stale != null && !stale.isRemoved()) {
                     stale.discard();
-                    LOGGER.warn("Discarded duplicate chunk King {} while persistent flight is active",
+                    LOGGER.warn("Discarded duplicate chunk Royal boss {} while persistent flight is active",
                             data.base.uuid());
                 }
                 simulate(server, level, data);
@@ -182,8 +182,15 @@ public final class PersistentRoyalFlight {
     }
 
     private RoyalData state(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(
+        RoyalData data = level.getDataStorage().computeIfAbsent(
                 new SavedData.Factory<>(RoyalData::new, RoyalData::load, null), dataName);
+        if (data.offloaded && (data.base == null || !typeId.equals(data.base.typeId()))) {
+            // Never materialize a saved visual from the wrong royal type.
+            LOGGER.error("Invalid persistent royal state in {} for {}; leaving it inactive",
+                    dataName, typeId);
+            data.clear();
+        }
+        return data;
     }
 
     private void findAndOffload(MinecraftServer server, ServerLevel level, RoyalData data) {
@@ -248,7 +255,7 @@ public final class PersistentRoyalFlight {
         currentTarget.remove(level);
         // Discard, not unload: never leave a second boss stored in his old chunk.
         king.discard();
-        LOGGER.info("King {} entered persistent flight in {}", base.uuid(),
+        LOGGER.info("Royal boss {} entered persistent flight in {}", base.uuid(),
                 level.dimension().location());
     }
 
@@ -388,7 +395,7 @@ public final class PersistentRoyalFlight {
 
         UUID id = state.base.uuid();
         state.clear();
-        LOGGER.info("King {} returned to native Antarchy AI in {}", id,
+        LOGGER.info("Royal boss {} returned to native Antarchy AI in {}", id,
                 level.dimension().location());
         return true;
     }

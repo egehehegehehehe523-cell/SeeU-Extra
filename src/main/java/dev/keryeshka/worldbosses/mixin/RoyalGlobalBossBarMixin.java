@@ -16,8 +16,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Antarchy-only hook: retain its native boss event's player roster for
  * encounter logic and sound targeting, but prevent a second client bossbar.
- * SeeU Extra owns one continuous dimension-wide bar for the King instead.
- * No change to Queen or other Antarchy bosses.
+ * World Bosses owns continuous dimension-wide bars for both royals instead.
+ * Does not affect other Antarchy bosses.
  */
 @Pseudo
 @Mixin(targets = "com.craisinlord.antarchy.content.entity.royal.RoyalBossEntity", remap = false)
@@ -25,7 +25,7 @@ public abstract class RoyalGlobalBossBarMixin {
     @Shadow(remap = false) @Final private ServerBossEvent bossEvent;
 
     @Inject(method = "<init>", at = @At("TAIL"), remap = false, require = 0)
-    private void seeuExtra$globalKingBar(EntityType<?> entityType, Level level, CallbackInfo ci) {
+    private void worldBosses$globalRoyalBar(EntityType<?> entityType, Level level, CallbackInfo ci) {
         if (!level.isClientSide && WorldBossesOptions.globalBars
                 && (("antarchy:king".equals(BuiltInRegistries.ENTITY_TYPE.getKey(entityType).toString())
                         && WorldBossesOptions.kingEnabled)
