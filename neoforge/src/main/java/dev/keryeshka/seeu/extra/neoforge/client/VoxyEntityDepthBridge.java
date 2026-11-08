@@ -15,7 +15,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 /**
- * Optional, shader-only depth bridge for the distant King. NeoVoxy keeps its
+ * Optional, shader-only depth bridge for opted-in distant entities. NeoVoxy keeps its
  * Iris LOD depth separate from the entity framebuffer, so merely moving the
  * entity render stage cannot make terrain occlude it.
  *

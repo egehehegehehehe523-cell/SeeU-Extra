@@ -82,7 +82,7 @@ public final class ExtraEntityBroadcaster {
         }
         if (!currentSettings.enabled()) {
             elapsedTicks = 0;
-                retainedByLevel.clear();
+            retainedByLevel.clear();
             return;
         }
         if (sessions.isEmpty()) {
@@ -401,16 +401,16 @@ public final class ExtraEntityBroadcaster {
     }
 
     private static void includePriority(
-            List<EntitySnapshot> snapshots, EntitySnapshot king, int cap
+            List<EntitySnapshot> snapshots, EntitySnapshot priority, int cap
     ) {
-        if (cap <= 0 || snapshots.stream().anyMatch(s -> s.uuid().equals(king.uuid()))) {
+        if (cap <= 0 || snapshots.stream().anyMatch(s -> s.uuid().equals(priority.uuid()))) {
             return;
         }
         if (snapshots.size() >= cap) {
             // Displace an ordinary snapshot, never increase the packet cap.
             snapshots.remove(snapshots.size() - 1);
         }
-        snapshots.add(king);
+        snapshots.add(priority);
     }
 
     private static boolean inRange(ServerPlayer viewer, EntitySnapshot snapshot, int minimum, int maximum) {
@@ -469,11 +469,8 @@ public final class ExtraEntityBroadcaster {
                                 entity.getBoundingBox().getSize(),
                                 viewerOffer.entityViewScaleQ10()
                         );
-                        // The native King stays physically active near players,
-                        // but SeeU Extra must keep supplying his persistent
-                        // visual proxy even when vanilla already tracks him.
-                        // Otherwise full snapshots delete that proxy right at
-                        // the handoff and the GeckoLib animation restarts.
+                        // Registered add-ons and opted-in GeckoLib mobs continue
+                        // receiving snapshots even through native handoffs.
                         if (need == VanillaEntityHandoff.SnapshotNeed.NONE
                                 && !DistantEntityServerHooks.priorityType(candidate.typeId())
                                 && !viewerOffer.persistentAnimations().contains(candidate.typeId())) {

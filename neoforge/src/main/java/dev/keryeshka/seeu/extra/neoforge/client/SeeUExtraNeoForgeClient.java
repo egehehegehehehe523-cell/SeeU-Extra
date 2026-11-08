@@ -87,7 +87,7 @@ public final class SeeUExtraNeoForgeClient {
         consumers.endBatch();
     }
 
-    /** Client-only bridge used by the optional Antarchy renderer/cache mixins. */
+    /** Client-only bridge for optional independent renderer/cache adapters. */
     public static boolean ownsNativeRender(Entity entity) {
         return renderer != null && configuration != null
                 && renderer.ownsNativeRender(entity, configuration.offer());

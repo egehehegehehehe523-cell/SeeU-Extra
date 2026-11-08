@@ -213,9 +213,8 @@ public final class ExtraEntityRenderer {
                     continue;
                 }
                 boolean syntheticEntity = renderEntity != vanillaEntity;
-                // A copied glowing tag and FULL_BRIGHT block light turn the distant King
-                // into an emissive silhouette in Iris shader packs. This only changes
-                // the synthetic visual, not the real King's combat/state flags.
+                // Full-bright block light and a glowing tag can turn
+                // synthetic entities emissive in Iris shader packs.
                 if (syntheticEntity) {
                     renderEntity.setGlowingTag(!shaderPackActive
                             && EntityFlags.has(snapshot.flags(), EntityFlags.GLOWING));
@@ -286,9 +285,8 @@ public final class ExtraEntityRenderer {
 
     private static boolean shouldRenderBeyondVanillaDistance(
             Entity entity, Frustum frustum, DistantEntityVisualHooks.Adapter adapter) {
-        // Bypass vanilla's distance test. Antarchy's King model is much wider
-        // than its physical hitbox (giant animated wings/tail); avoid frustum
-        // popping when only those parts are inside the camera view.
+        // Bypass vanilla's distance test; optional adapters expand the
+        // physical hitbox to cover large animated model geometry.
         double margin = adapter == null ? Math.max(4.0D, entity.getBbWidth())
                 : adapter.renderMargin(entity);
         return frustum == null || frustum.isVisible(
@@ -296,9 +294,9 @@ public final class ExtraEntityRenderer {
         );
     }
 
-    /** True only when the same King has a currently renderable SeeU snapshot. */
-    public boolean ownsNativeRender(Entity nativeKing, ClientOffer offer) {
-        String typeId = BuiltInRegistries.ENTITY_TYPE.getKey(nativeKing.getType()).toString();
+    /** True when a registered adapter owns the tracked native entity's draw. */
+    public boolean ownsNativeRender(Entity nativeEntity, ClientOffer offer) {
+        String typeId = BuiltInRegistries.ENTITY_TYPE.getKey(nativeEntity.getType()).toString();
         DistantEntityVisualHooks.Adapter adapter = DistantEntityVisualHooks.adapter(typeId);
         if (adapter == null || !adapter.suppressNativeDraw()
                 || !offer.enabled() || offer.maximumDistanceFor(typeId) <= 0) {
@@ -309,19 +307,19 @@ public final class ExtraEntityRenderer {
                 || !minecraft.level.dimension().location().toString().equals(tracker.dimensionKey())) {
             return false;
         }
-        // Proxy and native King deliberately have the same UUID. Never cancel
+        // A proxy and native entity deliberately share a UUID. Never cancel
         // the synthetic renderer's own draw: only the entity registered in
         // ClientLevel by its runtime ID is eligible for vanilla suppression.
-        if (minecraft.level.getEntity(nativeKing.getId()) != nativeKing) {
+        if (minecraft.level.getEntity(nativeEntity.getId()) != nativeEntity) {
             return false;
         }
-        ProxyEntry entry = proxies.get(nativeKing.getUUID());
+        ProxyEntry entry = proxies.get(nativeEntity.getUUID());
         if (entry == null || entry.level != minecraft.level || entry.animationCache == null) {
             return false;
         }
         for (TrackedExtraEntity tracked : tracker.entities()) {
             InterpolatedEntityState state = tracked.sample(System.nanoTime());
-            if (state.snapshot().uuid().equals(nativeKing.getUUID())) {
+            if (state.snapshot().uuid().equals(nativeEntity.getUUID())) {
                 double distance = minecraft.player.distanceToSqr(state.position());
                 int max = Math.min(offer.maximumDistanceBlocks(), offer.maximumDistanceFor(typeId));
                 return max > 0 && distance >= square(offer.minimumDistanceBlocks())
@@ -331,15 +329,15 @@ public final class ExtraEntityRenderer {
         return false;
     }
 
-    /** Give GeckoLib's native King trigger packets the same long-lived controller. */
-    public Object animationCacheForNative(Entity nativeKing) {
-        if (nativeKing == null || Minecraft.getInstance().level == null
-                || Minecraft.getInstance().level.getEntity(nativeKing.getId()) != nativeKing
-                || DistantEntityVisualHooks.adapter(BuiltInRegistries.ENTITY_TYPE.getKey(nativeKing.getType()).toString()) == null) {
+    /** Offer GeckoLib's native trigger packets the persistent proxy controller. */
+    public Object animationCacheForNative(Entity nativeEntity) {
+        if (nativeEntity == null || Minecraft.getInstance().level == null
+                || Minecraft.getInstance().level.getEntity(nativeEntity.getId()) != nativeEntity
+                || DistantEntityVisualHooks.adapter(BuiltInRegistries.ENTITY_TYPE.getKey(nativeEntity.getType()).toString()) == null) {
             return null;
         }
-        ProxyEntry entry = proxies.get(nativeKing.getUUID());
-        return entry != null && entry.level == nativeKing.level() ? entry.animationCache : null;
+        ProxyEntry entry = proxies.get(nativeEntity.getUUID());
+        return entry != null && entry.level == nativeEntity.level() ? entry.animationCache : null;
     }
 
     private static void syncNativeState(Entity source, Entity destination) {
