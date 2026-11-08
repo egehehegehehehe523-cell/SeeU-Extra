@@ -6,6 +6,10 @@
   "mixins": [
     "KingIdleWanderMixin"
   ],
+  "client": [
+    "KingAnimationCacheMixin",
+    "RoyalBossRendererMixin"
+  ],
   "injectors": {
     "defaultRequire": 0
   }

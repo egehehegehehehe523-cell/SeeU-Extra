@@ -18,6 +18,7 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
 
 import java.util.function.Supplier;
 
@@ -80,6 +81,16 @@ public final class SeeUExtraNeoForgeClient {
                 offer
         );
         consumers.endBatch();
+    }
+
+    /** Client-only bridge used by the optional Antarchy renderer/cache mixins. */
+    public static boolean ownsNativeKingRender(Entity entity) {
+        return renderer != null && configuration != null
+                && renderer.ownsKingRender(entity, configuration.offer());
+    }
+
+    public static Object animationCacheForNativeKing(Entity entity) {
+        return renderer == null ? null : renderer.animationCacheForNativeKing(entity);
     }
 
     private static void clear() {

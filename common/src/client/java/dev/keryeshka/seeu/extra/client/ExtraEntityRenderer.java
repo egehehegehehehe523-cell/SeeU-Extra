@@ -119,7 +119,9 @@ public final class ExtraEntityRenderer {
                     proxy.lastSeenFrame = currentFrame;
                     proxy.lastSeenNanos = now;
                 }
-                if (vanillaCovered) {
+                // The King always uses his persistent proxy, even in native combat range.
+                // RoyalBossRendererMixin prevents vanilla's duplicate King draw.
+                if (vanillaCovered && !KING_TYPE.equals(snapshot.typeId())) {
                     continue;
                 }
 
@@ -147,6 +149,11 @@ public final class ExtraEntityRenderer {
                     }
                     proxy.lastSeenFrame = currentFrame;
                     proxy.lastSeenNanos = now;
+                    if (KING_TYPE.equals(snapshot.typeId()) && vanillaEntity != null) {
+                        // Antarchy synchronizes phase, flight, beam and glimmer data on the
+                        // real client entity. Mirror it without replacing the proxy/cache.
+                        syncNativeKingState(vanillaEntity, proxy.entity);
+                    }
                     // Use a monotonic client tick for the synthetic GeckoLib
                     // entity; snapshot ages can be stale or arrive in bursts.
                     applyPosition(proxy.entity, state, viewer.tickCount);
@@ -239,6 +246,54 @@ public final class ExtraEntityRenderer {
         );
     }
 
+    /** True only when the same King has a currently renderable SeeU snapshot. */
+    public boolean ownsKingRender(Entity nativeKing, ClientOffer offer) {
+        if (!KING_TYPE.equals(BuiltInRegistries.ENTITY_TYPE.getKey(nativeKing.getType()).toString())
+                || !offer.enabled() || offer.maximumDistanceFor(KING_TYPE) <= 0) {
+            return false;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null || minecraft.player == null
+                || !minecraft.level.dimension().location().toString().equals(tracker.dimensionKey())) {
+            return false;
+        }
+        ProxyEntry entry = proxies.get(nativeKing.getUUID());
+        if (entry == null || entry.level != minecraft.level || entry.animationCache == null) {
+            return false;
+        }
+        for (TrackedExtraEntity tracked : tracker.entities()) {
+            InterpolatedEntityState state = tracked.sample(System.nanoTime());
+            if (state.snapshot().uuid().equals(nativeKing.getUUID())) {
+                double distance = minecraft.player.distanceToSqr(state.position());
+                int max = Math.min(offer.maximumDistanceBlocks(), offer.maximumDistanceFor(KING_TYPE));
+                return max > 0 && distance >= square(offer.minimumDistanceBlocks())
+                        && distance <= square(max);
+            }
+        }
+        return false;
+    }
+
+    /** Give GeckoLib's native King trigger packets the same long-lived controller. */
+    public Object animationCacheForNativeKing(Entity nativeKing) {
+        if (nativeKing == null || Minecraft.getInstance().level == null
+                || Minecraft.getInstance().level.getEntity(nativeKing.getId()) != nativeKing
+                || !KING_TYPE.equals(BuiltInRegistries.ENTITY_TYPE.getKey(nativeKing.getType()).toString())) {
+            return null;
+        }
+        ProxyEntry entry = proxies.get(nativeKing.getUUID());
+        return entry != null && entry.level == nativeKing.level() ? entry.animationCache : null;
+    }
+
+    private static void syncNativeKingState(Entity source, Entity destination) {
+        var data = source.getEntityData().getNonDefaultValues();
+        if (data != null) {
+            destination.getEntityData().assignValues(data);
+        }
+        if (source instanceof LivingEntity real && destination instanceof LivingEntity proxy) {
+            proxy.setHealth(real.getHealth());
+        }
+    }
+
     private ProxyEntry createProxy(ClientLevel level, EntitySnapshot snapshot) {
         ResourceLocation identifier = ResourceLocation.tryParse(snapshot.typeId());
         if (identifier == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(identifier)) {
@@ -257,7 +312,15 @@ public final class ExtraEntityRenderer {
         entity.setUUID(snapshot.uuid());
         entity.noPhysics = true;
         entity.setNoGravity(true);
-        return new ProxyEntry(level, snapshot.typeId(), entity);
+        Object animationCache = null;
+        if (KING_TYPE.equals(snapshot.typeId())) {
+            try {
+                animationCache = entity.getClass().getMethod("getAnimatableInstanceCache").invoke(entity);
+            } catch (ReflectiveOperationException | LinkageError failure) {
+                LOGGER.warn("King GeckoLib cache could not be shared; using fallback visuals", failure);
+            }
+        }
+        return new ProxyEntry(level, snapshot.typeId(), entity, animationCache);
     }
 
     private static void applyPosition(Entity entity, InterpolatedEntityState state, int animationTick) {
@@ -351,14 +414,16 @@ public final class ExtraEntityRenderer {
         private final ClientLevel level;
         private final String typeId;
         private final Entity entity;
+        private final Object animationCache;
         private long appliedRevision = Long.MIN_VALUE;
         private long lastSeenFrame;
         private long lastSeenNanos;
 
-        private ProxyEntry(ClientLevel level, String typeId, Entity entity) {
+        private ProxyEntry(ClientLevel level, String typeId, Entity entity, Object animationCache) {
             this.level = level;
             this.typeId = typeId;
             this.entity = entity;
+            this.animationCache = animationCache;
         }
     }
 }
