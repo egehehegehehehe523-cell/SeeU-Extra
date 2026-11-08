@@ -18,7 +18,7 @@ public final class SeeUExtraServerConfig {
     private static final String FILE_NAME = "seeu-extra-server.json";
 
     public int configVersion = ExtraServerSettings.CONFIG_VERSION;
-    public SelectionMode mode = SelectionMode.DISABLED;
+    public SelectionMode mode = SelectionMode.ALL;
     public List<String> types = new ArrayList<>();
     public List<String> namespaces = new ArrayList<>();
     public List<String> excludedTypes = new ArrayList<>();
