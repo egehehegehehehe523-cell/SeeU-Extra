@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Server-authoritative, single-King-per-dimension dormant flight.
@@ -48,10 +47,8 @@ public final class PersistentKingFlight {
     private static final String DATA_NAME = "seeu_extra_persistent_king";
     private static final String KING_TYPE = "antarchy:king";
     private static final double DETECTION_RANGE_SQUARED = 2048.0D * 2048.0D;
-    private static final double WANDER_SPEED = 0.85D; // blocks/tick, 17 blocks/sec
-    private static final double CHASE_SPEED = 1.20D;  // blocks/tick, 24 blocks/sec
-    private static final double MAX_VERTICAL_SPEED = 0.14D;
-    private static final double WORLD_EDGE = 29_999_744.0D;
+    private static final double MAX_VERTICAL_SPEED = KingFlightMotion.MAX_VERTICAL_SPEED;
+    private static final double WORLD_EDGE = KingFlightMotion.WORLD_EDGE;
     // Existing Antarchy sounds only. Keep the offloaded boss audible without
     // running its AI, loading a chunk, or creating a client-only sound source.
     private static final ResourceLocation KING_FLY_SOUND =
@@ -229,7 +226,10 @@ public final class PersistentKingFlight {
                 return; // Never discard a King whose full boss state could not be saved.
             }
             base = ExtraEntityBroadcaster.captureKingSnapshot(king);
-            data.capture(entityTag, base, king.getHealth() / Math.max(1.0F, king.getMaxHealth()));
+            KingFlightMotion.State heading = king instanceof KingFlightSteeringAccess access
+                    ? access.seeuExtra$flightState() : null;
+            data.capture(entityTag, base,
+                    king.getHealth() / Math.max(1.0F, king.getMaxHealth()), heading);
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("Could not serialize King flight state; keeping the real King alive", failure);
             return;
@@ -282,6 +282,7 @@ public final class PersistentKingFlight {
             // the immediate native entity lookup after the handoff.
             UUID kingId = data.base.uuid();
             if (tryRestore(level, data)) {
+                lastLiveKing.put(level, kingId);
                 currentTarget.remove(level);
                 if (distantDecrees != null) {
                     int remaining = distantDecrees.handoffToNative(level);
@@ -301,44 +302,34 @@ public final class PersistentKingFlight {
         }
         playDistantAmbient(level, data);
 
-        double desiredYaw;
-        if (player != null) {
-            double dx = player.getX() - data.x;
-            double dz = player.getZ() - data.z;
-            desiredYaw = Math.toDegrees(Math.atan2(-dx, dz));
-        } else {
-            if (--data.wanderTicks <= 0) {
-                data.wanderYaw = Mth.wrapDegrees(data.yaw
-                        + ThreadLocalRandom.current().nextFloat() * 160.0F - 80.0F);
-                data.wanderTicks = 240 + ThreadLocalRandom.current().nextInt(320);
-                data.wanderRise = ThreadLocalRandom.current().nextDouble(-0.10D, 0.10D);
-            }
-            desiredYaw = data.wanderYaw;
-        }
-
-        // The King moves in the direction his model actually faces, instead of
-        // moving sideways while the body takes several seconds to catch up.
-        data.yaw = Mth.approachDegrees(data.yaw, (float) desiredYaw, 9.0F);
-        double radians = data.yaw * Mth.DEG_TO_RAD;
-        double speed = player == null ? WANDER_SPEED : CHASE_SPEED;
-        data.vx = -Math.sin(radians) * speed;
-        data.vz = Math.cos(radians) * speed;
-
-        double wantedY = player == null ? data.wanderAltitude + data.wanderRise * 70.0D
-                : player.getY() + 22.0D;
         double floor = level.getMinBuildHeight() + 28.0D;
         double ceiling = level.getMaxBuildHeight() - 50.0D;
-        wantedY = Mth.clamp(wantedY, floor, ceiling);
-        data.vy = Mth.clamp((wantedY - data.y) * 0.025D,
-                -MAX_VERTICAL_SPEED, MAX_VERTICAL_SPEED);
-
+        if (player == null) {
+            // Identical heading, turning cadence and vertical steering to the
+            // real King's idle controller; never reset at the chunk boundary.
+            KingFlightMotion.Step step = KingFlightMotion.advanceWander(
+                    data.flight, data.yaw, data.x, data.y, data.z,
+                    level.getMinBuildHeight(), level.getMaxBuildHeight());
+            data.yaw = step.yaw();
+            data.vx = step.vx();
+            data.vy = step.vy();
+            data.vz = step.vz();
+        } else {
+            double dx = player.getX() - data.x;
+            double dz = player.getZ() - data.z;
+            float desiredYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            data.yaw = Mth.approachDegrees(data.yaw, desiredYaw, 9.0F);
+            data.flight.aimAt(data.yaw, data.y);
+            double radians = data.yaw * Mth.DEG_TO_RAD;
+            data.vx = -Math.sin(radians) * KingFlightMotion.CHASE_SPEED;
+            data.vz = Math.cos(radians) * KingFlightMotion.CHASE_SPEED;
+            data.vy = Mth.clamp((Mth.clamp(player.getY() + 22.0D,
+                    floor, ceiling) - data.y) * 0.025D,
+                    -MAX_VERTICAL_SPEED, MAX_VERTICAL_SPEED);
+        }
         data.x = Mth.clamp(data.x + data.vx, -WORLD_EDGE, WORLD_EDGE);
         data.y = Mth.clamp(data.y + data.vy, floor, ceiling);
         data.z = Mth.clamp(data.z + data.vz, -WORLD_EDGE, WORLD_EDGE);
-        if (Math.abs(data.x) >= WORLD_EDGE || Math.abs(data.z) >= WORLD_EDGE) {
-            data.wanderTicks = 0;
-            data.wanderYaw = Mth.wrapDegrees(data.yaw + 180.0F);
-        }
         if (data.age < Integer.MAX_VALUE) {
             ++data.age;
         }
@@ -378,6 +369,9 @@ public final class PersistentKingFlight {
         }
 
         king.moveTo(state.x, state.y, state.z, state.yaw, state.base.pitch());
+        if (king instanceof KingFlightSteeringAccess access) {
+            access.seeuExtra$restoreFlightState(state.flight);
+        }
         king.setDeltaMovement(state.vx, state.vy, state.vz);
         king.tickCount = state.age;
         king.hasImpulse = true;
@@ -491,22 +485,22 @@ public final class PersistentKingFlight {
         private EntitySnapshot base;
         private double x, y, z;
         private double vx, vy, vz;
-        private float yaw, wanderYaw;
-        private double wanderRise, wanderAltitude;
-        private int age, wanderTicks;
+        private float yaw;
+        private KingFlightMotion.State flight = KingFlightMotion.State.begin(0.0F, 0.0D);
+        private int age;
         private float healthFraction = 1.0F;
 
-        private void capture(CompoundTag serialized, EntitySnapshot initial, float healthFraction) {
+        private void capture(CompoundTag serialized, EntitySnapshot initial, float healthFraction,
+                KingFlightMotion.State flightState) {
             entityTag = serialized.copy();
             this.healthFraction = Mth.clamp(healthFraction, 0.0F, 1.0F);
             base = initial;
             x = initial.x(); y = initial.y(); z = initial.z();
             vx = initial.velocityX(); vy = initial.velocityY(); vz = initial.velocityZ();
             yaw = initial.bodyYaw();
-            wanderYaw = yaw;
-            wanderAltitude = y;
+            flight = flightState == null ? KingFlightMotion.State.begin(yaw, y)
+                    : flightState.copy();
             age = initial.age();
-            wanderTicks = 220;
             offloaded = true;
             setDirty();
         }
@@ -539,10 +533,9 @@ public final class PersistentKingFlight {
                 result.vy = tag.getDouble("VY");
                 result.vz = tag.getDouble("VZ");
                 result.yaw = tag.getFloat("Yaw");
-                result.wanderYaw = tag.getFloat("WanderYaw");
-                result.wanderRise = tag.getDouble("WanderRise");
-                result.wanderAltitude = tag.getDouble("WanderAltitude");
-                result.wanderTicks = tag.getInt("WanderTicks");
+                result.flight = new KingFlightMotion.State(
+                        tag.getFloat("WanderYaw"), tag.getInt("WanderTicks"),
+                        tag.getDouble("WanderRise"), tag.getDouble("WanderAltitude"));
                 result.age = tag.getInt("Age");
                 result.healthFraction = tag.contains("HealthFraction")
                         ? Mth.clamp(tag.getFloat("HealthFraction"), 0.0F, 1.0F) : 1.0F;
@@ -565,10 +558,10 @@ public final class PersistentKingFlight {
                                 true, List.of(base))));
                 tag.putDouble("X", x); tag.putDouble("Y", y); tag.putDouble("Z", z);
                 tag.putDouble("VX", vx); tag.putDouble("VY", vy); tag.putDouble("VZ", vz);
-                tag.putFloat("Yaw", yaw); tag.putFloat("WanderYaw", wanderYaw);
-                tag.putDouble("WanderRise", wanderRise);
-                tag.putDouble("WanderAltitude", wanderAltitude);
-                tag.putInt("WanderTicks", wanderTicks);
+                tag.putFloat("Yaw", yaw); tag.putFloat("WanderYaw", flight.heading());
+                tag.putDouble("WanderRise", flight.rise());
+                tag.putDouble("WanderAltitude", flight.altitude());
+                tag.putInt("WanderTicks", flight.remaining());
                 tag.putInt("Age", age);
                 tag.putFloat("HealthFraction", healthFraction);
             }

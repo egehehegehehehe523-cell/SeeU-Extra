@@ -1,6 +1,8 @@
 package dev.keryeshka.seeu.extra.neoforge.mixin;
 
 import dev.keryeshka.seeu.extra.neoforge.KingWanderOptions;
+import dev.keryeshka.seeu.extra.server.KingFlightMotion;
+import dev.keryeshka.seeu.extra.server.KingFlightSteeringAccess;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Mob;
@@ -24,7 +26,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Pseudo
 @Mixin(targets = "com.craisinlord.antarchy.content.entity.royal.KingEntity", remap = false)
-public abstract class KingIdleWanderMixin {
+public abstract class KingIdleWanderMixin implements KingFlightSteeringAccess {
+    @Unique private KingFlightMotion.State seeuExtra$flight;
     @Unique private static final double seeuExtra$cruiseSpeed = 0.85D;
     @Unique private static final double seeuExtra$maxVerticalSpeed = 0.07D;
     @Unique private static final double seeuExtra$minProgressSquared = 0.0025D;
@@ -66,6 +69,27 @@ public abstract class KingIdleWanderMixin {
         }
 
         Vec3 position = king.position();
+        if (KingWanderOptions.globalRoam) {
+            if (seeuExtra$flight == null) {
+                seeuExtra$flight = KingFlightMotion.State.begin(king.getYRot(), position.y);
+            }
+            KingFlightMotion.Step motion = KingFlightMotion.advanceWander(
+                    seeuExtra$flight, king.getYRot(), position.x, position.y, position.z,
+                    level.getMinBuildHeight(), level.getMaxBuildHeight());
+            // Antarchy can still assign a waypoint during its tick; it must
+            // never compete with the persistent flight's shared heading.
+            king.getNavigation().stop();
+            king.getMoveControl().setWantedPosition(
+                    position.x, position.y, position.z, 0.0D);
+            Vec3 step = new Vec3(motion.vx(), motion.vy(), motion.vz());
+            king.move(MoverType.SELF, step);
+            king.setDeltaMovement(step);
+            king.hasImpulse = true;
+            king.setYRot(motion.yaw());
+            king.setYBodyRot(motion.yaw());
+            king.setYHeadRot(motion.yaw());
+            return;
+        }
         boolean madeProgress = seeuExtra$lastPosition != null
                 && position.distanceToSqr(seeuExtra$lastPosition) >= seeuExtra$minProgressSquared;
         if (madeProgress) {
@@ -154,6 +178,16 @@ public abstract class KingIdleWanderMixin {
         king.setYRot(yaw);
         king.setYBodyRot(yaw);
         king.setYHeadRot(yaw);
+    }
+
+    @Override
+    public KingFlightMotion.State seeuExtra$flightState() {
+        return seeuExtra$flight == null ? null : seeuExtra$flight.copy();
+    }
+
+    @Override
+    public void seeuExtra$restoreFlightState(KingFlightMotion.State state) {
+        seeuExtra$flight = state == null ? null : state.copy();
     }
 
     @Unique
