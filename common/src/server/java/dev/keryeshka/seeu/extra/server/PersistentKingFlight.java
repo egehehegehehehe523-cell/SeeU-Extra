@@ -116,7 +116,7 @@ public final class PersistentKingFlight {
             }
         }
         if (!(candidate instanceof Mob king) || king.isRemoved() || !king.isAlive()
-                || king.isNoAi() || king.getTarget() != null
+                || king.isNoAi()
                 || !king.getPassengers().isEmpty()) {
             return;
         }
@@ -128,11 +128,17 @@ public final class PersistentKingFlight {
         }
 
         CompoundTag entityTag = new CompoundTag();
-        if (!king.save(entityTag)) {
-            return; // Never discard a King whose full boss state could not be saved.
+        EntitySnapshot base;
+        try {
+            if (!king.save(entityTag)) {
+                return; // Never discard a King whose full boss state could not be saved.
+            }
+            base = ExtraEntityBroadcaster.captureKingSnapshot(king);
+            data.capture(entityTag, base);
+        } catch (RuntimeException | LinkageError failure) {
+            LOGGER.error("Could not serialize King flight state; keeping the real King alive", failure);
+            return;
         }
-        EntitySnapshot base = ExtraEntityBroadcaster.captureKingSnapshot(king);
-        data.capture(entityTag, base);
         lastLiveKing.remove(level);
         currentTarget.remove(level);
         // Discard, not unload: never leave a second boss stored in his old chunk.
