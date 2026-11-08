@@ -15,7 +15,8 @@ public final class SeeUExtraNeoForge {
 
     public SeeUExtraNeoForge() {
         endpoint = new SeeUExtraServerEndpoint(
-                SeeUExtraServerConfig.load(FMLPaths.CONFIGDIR.get())
+                SeeUExtraServerConfig.load(FMLPaths.CONFIGDIR.get()),
+                new NeoForgeKingTicketAccess()
         );
         SeeUServerAddons.getInstance().register(SeeUExtra.DESCRIPTOR, endpoint);
         NeoForge.EVENT_BUS.addListener(this::onServerTick);
