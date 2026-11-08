@@ -27,24 +27,6 @@ public final class SeeUExtraServerConfig {
     public int minimumDistanceBlocks = ExtraServerSettings.DEFAULT_MINIMUM_DISTANCE_BLOCKS;
     public int entityCap = ExtraServerSettings.DEFAULT_ENTITY_CAP;
     public int updateIntervalTicks = ExtraServerSettings.DEFAULT_UPDATE_INTERVAL_TICKS;
-    // The King only: allow his real server AI to run while an opted-in viewer
-    // watches him outside simulation distance. Disable to retain old behavior.
-    public boolean liveKingTicking = true;
-    // One authoritative King per dimension: persist his full entity NBT, and
-    // simulate flight without chunk tickets until naturally ticking terrain is close.
-    // Overrides legacy liveKingTicking for the King when enabled.
-    public boolean persistentKingSimulation = true;
-    // Offloaded King can proclaim Kneel, Do Not Run, Stand Tall and Stand Your
-    // Ground within 32 chunks. Combat decrees require the real entity.
-    public boolean kingDistantPlayerDecrees = true;
-    // NeoForge only: enable the idle-flight fallback. When persistent King
-    // simulation is on, this also keeps the native King moving continuously
-    // after the offloaded -> native handoff. Set false to opt out.
-    public boolean kingIdleWanderFallback = true;
-    // Enable continuous idle roaming even without persistent King simulation.
-    // The native King still requires naturally ticking chunks to move.
-    public boolean kingGlobalRoam = false;
-
     public static SeeUExtraServerConfig load(Path configDirectory) {
         Path configPath = configDirectory.resolve(FILE_NAME);
         try {

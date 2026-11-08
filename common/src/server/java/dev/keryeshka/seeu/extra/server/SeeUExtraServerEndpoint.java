@@ -22,13 +22,7 @@ public final class SeeUExtraServerEndpoint implements ServerAddonEndpoint {
     private final Map<UUID, OpenSession> sessions = new HashMap<>();
 
     public SeeUExtraServerEndpoint(SeeUExtraServerConfig config) {
-        this(config, KingTicketAccess.vanilla());
-    }
-
-    public SeeUExtraServerEndpoint(SeeUExtraServerConfig config, KingTicketAccess ticketAccess) {
-        this.broadcaster = new ExtraEntityBroadcaster(
-                config.settings(), config.liveKingTicking, ticketAccess,
-                config.persistentKingSimulation, config.kingDistantPlayerDecrees);
+        this.broadcaster = new ExtraEntityBroadcaster(config.settings());
     }
 
     @Override

@@ -15,15 +15,7 @@ public final class SeeUExtraNeoForge {
 
     public SeeUExtraNeoForge() {
         SeeUExtraServerConfig config = SeeUExtraServerConfig.load(FMLPaths.CONFIGDIR.get());
-        KingWanderOptions.enabled = config.kingIdleWanderFallback;
-        // Persistent flight needs continuous idle movement after native restoration.
-        // Still allow users to disable the override via kingIdleWanderFallback=false.
-        KingWanderOptions.globalRoam = config.kingGlobalRoam
-                || (config.persistentKingSimulation && config.kingIdleWanderFallback);
-        KingWanderOptions.globalBossBar = config.persistentKingSimulation
-                && config.settings().enabled()
-                && config.settings().selector().selects("antarchy:king");
-        endpoint = new SeeUExtraServerEndpoint(config, new NeoForgeKingTicketAccess());
+        endpoint = new SeeUExtraServerEndpoint(config);
         SeeUServerAddons.getInstance().register(SeeUExtra.DESCRIPTOR, endpoint);
         NeoForge.EVENT_BUS.addListener(this::onServerTick);
     }

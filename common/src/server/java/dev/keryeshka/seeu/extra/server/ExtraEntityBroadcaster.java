@@ -42,16 +42,12 @@ public final class ExtraEntityBroadcaster {
     // Bound both age and count to avoid retaining a world-sized entity history.
     private static final long RETAIN_UNLOADED_TICKS = 20L * 60L * 10L;
     private static final int MAX_RETAINED_PER_LEVEL = 1024;
-    private static final String KING_TYPE = "antarchy:king";
     private static final Comparator<RankedCandidate> NEAREST_FIRST = Comparator
             .comparing(RankedCandidate::need)
             .thenComparingDouble(RankedCandidate::distanceSquared)
             .thenComparing(candidate -> candidate.candidate().entity().getUUID());
 
     private ExtraServerSettings settings;
-    private final boolean liveKingTicking;
-    private final DistantKingTickManager kingTickets;
-    private final PersistentKingFlight persistentKing;
     private final Set<String> quarantinedTypes = new HashSet<>();
     private final Set<String> loggedRetainedTypes = new HashSet<>();
     private final Map<ServerLevel, Map<UUID, RetainedSnapshot>> retainedByLevel = new IdentityHashMap<>();
@@ -59,36 +55,7 @@ public final class ExtraEntityBroadcaster {
     private long sequence;
 
     public ExtraEntityBroadcaster(ExtraServerSettings settings) {
-        this(settings, false, KingTicketAccess.vanilla());
-    }
-
-    public ExtraEntityBroadcaster(ExtraServerSettings settings, boolean liveKingTicking) {
-        this(settings, liveKingTicking, KingTicketAccess.vanilla());
-    }
-
-    public ExtraEntityBroadcaster(
-            ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess
-    ) {
-        this(settings, liveKingTicking, ticketAccess, false, false);
-    }
-
-    public ExtraEntityBroadcaster(
-            ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess,
-            boolean persistentKingSimulation
-    ) {
-        this(settings, liveKingTicking, ticketAccess, persistentKingSimulation, true);
-    }
-
-    public ExtraEntityBroadcaster(
-            ExtraServerSettings settings, boolean liveKingTicking, KingTicketAccess ticketAccess,
-            boolean persistentKingSimulation, boolean kingDistantPlayerDecrees
-    ) {
         this.settings = settings;
-        // Persistent flight never loads a distant chunk. The legacy live-King
-        // ticket mode is mutually exclusive with the persistent simulation.
-        this.liveKingTicking = liveKingTicking && !persistentKingSimulation;
-        this.kingTickets = new DistantKingTickManager(ticketAccess);
-        this.persistentKing = new PersistentKingFlight(persistentKingSimulation, kingDistantPlayerDecrees);
     }
 
     public void updateSettings(ExtraServerSettings settings) {
@@ -97,7 +64,6 @@ public final class ExtraEntityBroadcaster {
         this.quarantinedTypes.clear();
         this.loggedRetainedTypes.clear();
         this.retainedByLevel.clear();
-        this.kingTickets.clear();
     }
 
     public boolean isEnabled() {
@@ -106,26 +72,24 @@ public final class ExtraEntityBroadcaster {
 
     public void tick(MinecraftServer server, Collection<? extends ExtraViewerSession> sessions) {
         ExtraServerSettings currentSettings = settings;
-        // Global world-boss movement continues even with no SeeU viewers.
-        if (currentSettings.enabled() && currentSettings.selector().selects(KING_TYPE)) {
-            persistentKing.tick(server);
+        // Add-ons own their simulated entities, not the SeeU transport.
+        for (DistantEntityServerHooks.Extension extension : DistantEntityServerHooks.extensions()) {
+            if (currentSettings.enabled() && extension.entityTypes().stream()
+                    .anyMatch(currentSettings.selector()::selects)) {
+                extension.tick(server);
+            }
+            extension.updateBossBars(server, currentSettings);
         }
-        // Continue syncing the offloaded King's boss bar even without
-        // normal entity snapshots; clear it when viewing is disabled.
-        persistentKing.updateBossBars(server, currentSettings);
         if (!currentSettings.enabled()) {
             elapsedTicks = 0;
-            kingTickets.clear();
-            retainedByLevel.clear();
+                retainedByLevel.clear();
             return;
         }
         if (sessions.isEmpty()) {
-            kingTickets.clear();
-            retainedByLevel.clear();
+                retainedByLevel.clear();
             return;
         }
 
-        updateKingTickets(server, sessions, currentSettings);
 
         elapsedTicks++;
         if (elapsedTicks < currentSettings.updateIntervalTicks()) {
@@ -135,8 +99,7 @@ public final class ExtraEntityBroadcaster {
 
         Map<ServerLevel, List<ExtraViewerSession>> sessionsByLevel = groupSessions(sessions);
         if (sessionsByLevel.isEmpty()) {
-            kingTickets.clear();
-            retainedByLevel.clear();
+                retainedByLevel.clear();
             return;
         }
         retainedByLevel.keySet().removeIf(level -> !sessionsByLevel.containsKey(level));
@@ -180,76 +143,6 @@ public final class ExtraEntityBroadcaster {
         }
     }
 
-
-    /**
-     * Keep Antarchy's own AI ticking, rather than faking movement on the
-     * client. One temporary entity-ticking ticket is allowed per dimension,
-     * and only while somebody explicitly opts into viewing the distant King.
-     * Previously observed unloaded Kings can be brought back by the ticket.
-     */
-    private void updateKingTickets(
-            MinecraftServer server,
-            Collection<? extends ExtraViewerSession> sessions,
-            ExtraServerSettings currentSettings
-    ) {
-        if (!liveKingTicking || !currentSettings.selector().selects(KING_TYPE)) {
-            kingTickets.clear();
-            return;
-        }
-
-        Map<ServerLevel, ChunkPos> wanted = new IdentityHashMap<>();
-        double naturallyTickingDistance = server.getPlayerList().getSimulationDistance() * 16.0D;
-        double naturallyTickingDistanceSquared = naturallyTickingDistance * naturallyTickingDistance;
-        for (ExtraViewerSession session : sessions) {
-            ClientOffer offer = session.offer();
-            ServerPlayer viewer = session.player();
-            if (offer == null || !offer.enabled() || viewer == null || viewer.isRemoved()) {
-                continue;
-            }
-            int maximum = Math.min(currentSettings.maximumDistanceBlocks(),
-                    offer.maximumDistanceFor(KING_TYPE));
-            if (maximum <= 0 || wanted.containsKey(viewer.serverLevel())) {
-                continue;
-            }
-            Map<UUID, RetainedSnapshot> snapshots = retainedByLevel.get(viewer.serverLevel());
-            if (snapshots == null) {
-                continue;
-            }
-
-            for (RetainedSnapshot cached : snapshots.values()) {
-                EntitySnapshot snapshot = cached.snapshot();
-                if (!KING_TYPE.equals(snapshot.typeId())) {
-                    continue;
-                }
-                Entity source = cached.source().get();
-                if (source != null && (source.getRemovalReason() != null
-                        && source.getRemovalReason() != Entity.RemovalReason.UNLOADED_TO_CHUNK
-                        || !source.isRemoved() && !source.isAlive())) {
-                    continue;
-                }
-                // A live source is more accurate than the last sent packet;
-                // an unloaded source only contributes its retained position.
-                boolean live = source != null && !source.isRemoved()
-                        && source.level() == viewer.serverLevel();
-                double x = live ? source.getX() : snapshot.x();
-                double y = live ? source.getY() : snapshot.y();
-                double z = live ? source.getZ() : snapshot.z();
-                double dx = x - viewer.getX();
-                double dy = y - viewer.getY();
-                double dz = z - viewer.getZ();
-                double horizontalDistanceSquared = dx * dx + dz * dz;
-                double distanceSquared = horizontalDistanceSquared + dy * dy;
-                if (horizontalDistanceSquared <= naturallyTickingDistanceSquared
-                        || distanceSquared > (double) maximum * maximum) {
-                    continue;
-                }
-                wanted.put(viewer.serverLevel(), new ChunkPos(BlockPos.containing(x, y, z)));
-                break;
-            }
-        }
-
-        kingTickets.update(wanted);
-    }
 
     private static Map<ServerLevel, List<ExtraViewerSession>> groupSessions(
             Collection<? extends ExtraViewerSession> sessions
@@ -382,41 +275,30 @@ public final class ExtraEntityBroadcaster {
                 }
                 snapshots.add(snapshot);
             }
-            // One global boss must not lose his persistent visual simply
-            // because the nearest-N queue is full of ordinary mobs.
-            // This also bridges native tracking without changing renderer.
-            if (settings.selector().selects(KING_TYPE)) {
-                int kingMaximum = Math.min(maximumDistance, offer.maximumDistanceFor(KING_TYPE));
-                if (kingMaximum > 0) {
+            // An add-on may supply one offloaded entity per type/dimension.
+            // Normal snapshots remain subject to the user's per-type opt-in.
+            Set<UUID> offloadedIds = new HashSet<>();
+            for (DistantEntityServerHooks.Extension extension : DistantEntityServerHooks.extensions()) {
+                for (String type : extension.entityTypes()) {
+                    if (!settings.selector().selects(type)) continue;
+                    int maximum = Math.min(maximumDistance, offer.maximumDistanceFor(type));
+                    if (maximum <= 0) continue;
                     for (EntitySnapshot cached : snapshotCache.values()) {
-                        if (KING_TYPE.equals(cached.typeId())) {
-                            double distance = distanceSquared(viewer, cached);
-                            if (distance >= square(minimumDistance)
-                                    && distance <= square(kingMaximum)) {
-                                includePriorityKing(snapshots, cached, settings.entityCap());
-                            }
-                            break;
+                        if (type.equals(cached.typeId()) && inRange(viewer, cached, minimumDistance, maximum)) {
+                            includePriority(snapshots, cached, settings.entityCap());
                         }
                     }
-                }
-            }
-            // Offloaded flight stays authoritative without loading chunks.
-            EntitySnapshot distantKing = persistentKing.snapshot(viewer.serverLevel());
-            if (distantKing != null && !currentlyLoaded.contains(distantKing.uuid())
-                    && settings.selector().selects(KING_TYPE)) {
-                int kingMaximum = Math.min(maximumDistance, offer.maximumDistanceFor(KING_TYPE));
-                if (kingMaximum > 0) {
-                    double distance = distanceSquared(viewer, distantKing);
-                    if (distance >= square(minimumDistance) && distance <= square(kingMaximum)) {
-                        includePriorityKing(snapshots, distantKing, settings.entityCap());
+                    EntitySnapshot distant = extension.offloadedSnapshot(viewer.serverLevel(), type);
+                    if (distant != null && !currentlyLoaded.contains(distant.uuid())
+                            && inRange(viewer, distant, minimumDistance, maximum)) {
+                        includePriority(snapshots, distant, settings.entityCap());
+                        offloadedIds.add(distant.uuid());
                     }
                 }
             }
-            // Preserve other entities' last-known visuals, excluding the
-            // original King position now owned by the persistent simulation.
             appendRetainedSnapshots(
                     snapshots, viewer, offer, settings, retained, currentlyLoaded,
-                    minimumDistance, maximumDistance, distantKing);
+                    minimumDistance, maximumDistance, offloadedIds);
         }
 
         try {
@@ -472,7 +354,7 @@ public final class ExtraEntityBroadcaster {
             Set<UUID> currentlyLoaded,
             int minimumDistance,
             int maximumDistance,
-            EntitySnapshot distantKing
+            Set<UUID> offloadedIds
     ) {
         if (snapshots.size() >= settings.entityCap()) {
             return;
@@ -481,7 +363,7 @@ public final class ExtraEntityBroadcaster {
         List<RetainedSnapshot> available = new ArrayList<>();
         for (Map.Entry<UUID, RetainedSnapshot> entry : retained.entrySet()) {
             if (currentlyLoaded.contains(entry.getKey())
-                    || (distantKing != null && distantKing.uuid().equals(entry.getKey()))) {
+                    || offloadedIds.contains(entry.getKey())) {
                 continue;
             }
             RetainedSnapshot cached = entry.getValue();
@@ -518,7 +400,7 @@ public final class ExtraEntityBroadcaster {
         }
     }
 
-    private static void includePriorityKing(
+    private static void includePriority(
             List<EntitySnapshot> snapshots, EntitySnapshot king, int cap
     ) {
         if (cap <= 0 || snapshots.stream().anyMatch(s -> s.uuid().equals(king.uuid()))) {
@@ -529,6 +411,11 @@ public final class ExtraEntityBroadcaster {
             snapshots.remove(snapshots.size() - 1);
         }
         snapshots.add(king);
+    }
+
+    private static boolean inRange(ServerPlayer viewer, EntitySnapshot snapshot, int minimum, int maximum) {
+        double distance = distanceSquared(viewer, snapshot);
+        return distance >= square(minimum) && distance <= square(maximum);
     }
 
     private static double distanceSquared(ServerPlayer viewer, EntitySnapshot snapshot) {
@@ -588,7 +475,8 @@ public final class ExtraEntityBroadcaster {
                         // Otherwise full snapshots delete that proxy right at
                         // the handoff and the GeckoLib animation restarts.
                         if (need == VanillaEntityHandoff.SnapshotNeed.NONE
-                                && !KING_TYPE.equals(candidate.typeId())) {
+                                && !DistantEntityServerHooks.priorityType(candidate.typeId())
+                                && !viewerOffer.persistentAnimations().contains(candidate.typeId())) {
                             continue;
                         }
 
@@ -671,8 +559,11 @@ public final class ExtraEntityBroadcaster {
         return chunkDistance * 16;
     }
 
-    static EntitySnapshot captureKingSnapshot(Entity entity) {
-        return createSnapshot(new EntityCandidate(entity, KING_TYPE, 0));
+    /** Capture an authoritative entity snapshot for independent add-ons. */
+    public static EntitySnapshot captureSnapshot(Entity entity) {
+        ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+        if (id == null) throw new IllegalArgumentException("Unregistered entity type");
+        return createSnapshot(new EntityCandidate(entity, id.toString(), 0));
     }
 
     private static EntitySnapshot createSnapshot(EntityCandidate candidate) {
