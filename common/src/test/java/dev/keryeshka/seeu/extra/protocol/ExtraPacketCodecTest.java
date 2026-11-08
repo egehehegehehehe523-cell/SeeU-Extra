@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,6 +19,27 @@ class ExtraPacketCodecTest {
         ClientOffer offer = new ClientOffer(ExtraProtocol.VERSION, true, 4096, 128, 1536);
 
         assertEquals(offer, ExtraPacketCodec.decodeClientOffer(ExtraPacketCodec.encodeClientOffer(offer)));
+    }
+
+    @Test
+    void perEntityDistanceOfferRoundTrips() {
+        ClientOffer offer = new ClientOffer(
+                ExtraProtocol.VERSION, true, 8192, 0, 1024,
+                Map.of("antarchy:king", 4096, "antarchy:queen", 8192)
+        );
+        assertEquals(offer, ExtraPacketCodec.decodeClientOffer(ExtraPacketCodec.encodeClientOffer(offer)));
+        assertEquals(4096, offer.maximumDistanceFor("antarchy:king"));
+        assertEquals(0, offer.maximumDistanceFor("minecraft:zombie"));
+    }
+
+    @Test
+    void rejectsUnsafeOrInvalidPerEntityOffers() {
+        assertThrows(IllegalArgumentException.class, () -> new ClientOffer(
+                ExtraProtocol.VERSION, true, 100, 0, 1024, Map.of("invalid", 90)));
+        assertThrows(IllegalArgumentException.class, () -> new ClientOffer(
+                ExtraProtocol.VERSION, true, 100, 0, 1024, Map.of("antarchy:king", 101)));
+        assertThrows(IllegalArgumentException.class, () -> new ClientOffer(
+                ExtraProtocol.VERSION, true, 100, 0, 1024, Map.of("antarchy:king", 0)));
     }
 
     @Test
