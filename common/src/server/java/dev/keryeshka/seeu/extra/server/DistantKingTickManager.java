@@ -23,6 +23,11 @@ final class DistantKingTickManager {
     );
 
     private final Map<ServerLevel, ChunkPos> held = new IdentityHashMap<>();
+    private final KingTicketAccess ticketAccess;
+
+    DistantKingTickManager(KingTicketAccess ticketAccess) {
+        this.ticketAccess = ticketAccess;
+    }
 
     void update(Map<ServerLevel, ChunkPos> wanted) {
         held.entrySet().removeIf(entry -> {
@@ -38,7 +43,7 @@ final class DistantKingTickManager {
             if (!held.containsKey(entry.getKey())) {
                 ServerLevel level = entry.getKey();
                 ChunkPos pos = entry.getValue();
-                level.getChunkSource().addRegionTicket(KING_TICKET, pos, ENTITY_TICKING_RADIUS, pos);
+                ticketAccess.add(level, KING_TICKET, pos, ENTITY_TICKING_RADIUS);
                 held.put(level, pos);
             }
         }
@@ -48,7 +53,7 @@ final class DistantKingTickManager {
         update(Map.of());
     }
 
-    private static void release(ServerLevel level, ChunkPos pos) {
-        level.getChunkSource().removeRegionTicket(KING_TICKET, pos, ENTITY_TICKING_RADIUS, pos);
+    private void release(ServerLevel level, ChunkPos pos) {
+        ticketAccess.remove(level, KING_TICKET, pos, ENTITY_TICKING_RADIUS);
     }
 }
