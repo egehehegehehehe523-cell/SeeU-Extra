@@ -7,6 +7,10 @@ import dev.keryeshka.seeu.extra.protocol.ExtraPacketCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -48,6 +52,12 @@ public final class PersistentKingFlight {
     private static final double CHASE_SPEED = 1.20D;  // blocks/tick, 24 blocks/sec
     private static final double MAX_VERTICAL_SPEED = 0.14D;
     private static final double WORLD_EDGE = 29_999_744.0D;
+    // Existing Antarchy sounds only. Keep the offloaded boss audible without
+    // running its AI, loading a chunk, or creating a client-only sound source.
+    private static final ResourceLocation KING_FLY_SOUND =
+            ResourceLocation.fromNamespaceAndPath("antarchy", "king_fly_loop");
+    private static final ResourceLocation KING_ROAR_SOUND =
+            ResourceLocation.fromNamespaceAndPath("antarchy", "king_roar");
 
     private final boolean enabled;
     private final DistantKingDecrees distantDecrees;
@@ -204,7 +214,11 @@ public final class PersistentKingFlight {
 
         double activeRange = Math.max(32.0D,
                 (server.getPlayerList().getSimulationDistance() + 1) * 16.0D);
-        if (nearestPlayer(level, king.getX(), king.getZ(), activeRange * activeRange) != null) {
+        // Rendering / interaction requires the native King near *any*
+        // non-spectating player, including Creative-mode testers. Only the
+        // chase-target search below should exclude Creative players.
+        if (nearestPresentPlayer(level, king.getX(), king.getZ(),
+                activeRange * activeRange) != null) {
             return;
         }
 
@@ -251,7 +265,12 @@ public final class PersistentKingFlight {
 
         // Handoff only when a nearby player has naturally made this chunk
         // entity-ticking. No tickets, pathfinding, block reads or generation.
-        if (player != null && withinActivationDistance(server, data, player)
+        // Restore the real King for combat and vanilla damage interaction even
+        // when the nearby player is Creative. He still chases survival only.
+        ServerPlayer nearbyForActivation = nearestPresentPlayer(
+                level, data.x, data.z, DETECTION_RANGE_SQUARED);
+        if (nearbyForActivation != null
+                && withinActivationDistance(server, data, nearbyForActivation)
                 && tryRestore(level, data)) {
             currentTarget.remove(level);
             if (distantDecrees != null) {
@@ -265,6 +284,7 @@ public final class PersistentKingFlight {
         if (distantDecrees != null) {
             distantDecrees.tick(level, data.x, data.y, data.z);
         }
+        playDistantAmbient(level, data);
 
         double desiredYaw;
         if (player != null) {
@@ -369,6 +389,61 @@ public final class PersistentKingFlight {
     private static boolean targetable(ServerPlayer player) {
         return player.isAlive() && !player.isRemoved()
                 && !player.isSpectator() && !player.isCreative();
+    }
+
+    private static ServerPlayer nearestPresentPlayer(
+            ServerLevel level, double x, double z, double maxSquaredDistance
+    ) {
+        ServerPlayer closest = null;
+        double closestSquared = maxSquaredDistance;
+        for (ServerPlayer player : level.players()) {
+            if (!player.isAlive() || player.isRemoved() || player.isSpectator()) {
+                continue;
+            }
+            double distance = horizontalDistanceSquared(x, z, player.getX(), player.getZ());
+            if (distance <= closestSquared) {
+                closestSquared = distance;
+                closest = player;
+            }
+        }
+        return closest;
+    }
+
+    private static void playDistantAmbient(ServerLevel level, KingData data) {
+        // The normal King plays his own sounds after native restoration.
+        // Limited, spaced-out ambience when offloaded avoids overlapping loops.
+        if (data.age % 120 == 0) {
+            playKingSound(level, data, KING_FLY_SOUND, 6.0F, 0.92F);
+        }
+        if (data.age % 440 == 0) {
+            playKingSound(level, data, KING_ROAR_SOUND, 12.0F, 0.95F);
+        }
+    }
+
+    private static void playKingSound(
+            ServerLevel level, KingData data, ResourceLocation soundId,
+            float volume, float pitch
+    ) {
+        if (!BuiltInRegistries.SOUND_EVENT.containsKey(soundId)) {
+            return;
+        }
+        // Distance cap before sound dispatch. Minecraft handles spatial
+        // attenuation and sends to nearby clients; no world/chunk scans.
+        double reachSquared = (16.0D * volume) * (16.0D * volume);
+        boolean listener = false;
+        for (ServerPlayer player : level.players()) {
+            if (!player.isRemoved() && player.distanceToSqr(data.x, data.y, data.z)
+                    <= reachSquared) {
+                listener = true;
+                break;
+            }
+        }
+        if (!listener) {
+            return;
+        }
+        SoundEvent event = BuiltInRegistries.SOUND_EVENT.get(soundId);
+        level.playSound(null, data.x, data.y, data.z, event,
+                SoundSource.HOSTILE, volume, pitch);
     }
 
     private static ServerPlayer nearestPlayer(
