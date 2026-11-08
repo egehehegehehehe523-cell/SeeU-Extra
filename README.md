@@ -1,6 +1,6 @@
 # SeeU Extra (Minecraft 1.21.1)
 
-This fork renders **opted-in non-player entities** beyond Minecraft's normal render/tracking range using [SeeU](https://github.com/cat4blep/SeeU). It supports Fabric and NeoForge, with no Neo-Voxy or Minecraft mixins.
+This fork renders **opted-in non-player entities** beyond Minecraft's normal render/tracking range using [SeeU](https://github.com/cat4blep/SeeU). It supports Fabric and NeoForge, with no Neo-Voxy or Minecraft mixins. NeoForge has an **optional Antarchy King-only** idle-flight test mixin.
 
 ## In-game configuration
 
@@ -19,6 +19,7 @@ The server writes `config/seeu-extra-server.json`. **New installs** default to `
 - `ALL` permits the player's opted-in types; the client cannot override `excludedTypes` or `excludedNamespaces`.
 - The lower of server, client-global and client-per-type maximum distances wins. The higher minimum wins.
 - `entityCap` and `updateIntervalTicks` bound server traffic and snapshot work.
+- `kingIdleWanderFallback: true` (default on NeoForge only) enables an optional **Antarchy King-only mixin** that tries a small clear-flight waypoint after ~6 seconds stationary without a target. The native Antarchy patrol already attempts to fly; this is a diagnostic fallback, not a replacement. It never targets Minecraft, Voxy or unrelated mobs. Set to `false` to test without it (restart required).
 - `liveKingTicking: true` (default) keeps **at most one Antarchy King per dimension** entity-ticking via a **temporary level-30 chunk ticket** while an opted-in viewer is farther away than simulation distance but inside their configured King LOD range. No /forceload changes are saved, and the ticket is released when no longer needed. Set it to `false` to restore snapshot-only behavior. It does not tick the Queen or other entities. The server scans **only types requested by active clients**.
 - Players and anything carrying a player stay on SeeU's existing player path, not SeeU Extra's proxy path.
 - Server and client must run the **same fork version** (protocol 3). A mismatched upstream SeeU Extra build will not connect.
