@@ -14,13 +14,13 @@ public final class WorldBossesOptions {
     public boolean kingIdleWanderFallback = true;
     public boolean queenIdleWanderFallback = true;
     public boolean kingGlobalRoam = true;
-    public boolean queenGlobalRoam = true;
+    public boolean queenGlobalRoam = false;
     public boolean globalBossBars = true;
 
     public static volatile boolean kingWander = true;
     public static volatile boolean queenWander = true;
     public static volatile boolean kingRoam = true;
-    public static volatile boolean queenRoam = true;
+    public static volatile boolean queenRoam = false;
     public static volatile boolean globalBars = true;
     public static volatile boolean kingEnabled = true;
     public static volatile boolean queenEnabled = true;
