@@ -80,8 +80,7 @@ public final class ExtraEntityRenderer {
         long currentFrame = nextFrame();
         long now = System.nanoTime();
         double minimumDistanceSquared = square(offer.minimumDistanceBlocks());
-        double maximumDistanceSquared = square(offer.maximumDistanceBlocks());
-        EntityRenderDispatcher dispatcher = minecraft.getEntityRenderDispatcher();
+                EntityRenderDispatcher dispatcher = minecraft.getEntityRenderDispatcher();
         realEntities.clear();
         for (Entity entity : level.entitiesForRendering()) {
             realEntities.put(entity.getUUID(), entity);
@@ -91,7 +90,9 @@ public final class ExtraEntityRenderer {
             InterpolatedEntityState state = tracked.sample(now);
             EntitySnapshot snapshot = state.snapshot();
             double distanceSquared = viewer.distanceToSqr(state.position());
-            if (distanceSquared < minimumDistanceSquared || distanceSquared > maximumDistanceSquared) {
+            int typeMaximum = offer.maximumDistanceFor(snapshot.typeId());
+            if (typeMaximum <= 0 || distanceSquared < minimumDistanceSquared
+                    || distanceSquared > square(Math.min(typeMaximum, offer.maximumDistanceBlocks()))) {
                 continue;
             }
             Entity vanillaEntity = realEntities.get(snapshot.uuid());
@@ -109,10 +110,11 @@ public final class ExtraEntityRenderer {
             }
 
             try {
-                Entity renderEntity = vanillaEntity;
-                if (renderEntity != null) {
-                    proxies.remove(snapshot.uuid());
-                } else {
+                // A vanilla entity can remain in the client entity collection after
+                // it has stopped receiving updates. Always advance a snapshot-backed
+                // proxy beyond the vanilla handoff, even if that stale entity exists.
+                Entity renderEntity;
+                {
                     ProxyEntry proxy = proxies.get(snapshot.uuid());
                     if (proxy == null || proxy.level != level || !proxy.typeId.equals(snapshot.typeId())) {
                         proxy = createProxy(level, snapshot);
@@ -136,20 +138,12 @@ public final class ExtraEntityRenderer {
                 double renderZ;
                 float renderYaw;
                 int packedLight;
-                if (vanillaEntity == null) {
-                    Vec3 position = state.position();
-                    renderX = position.x;
-                    renderY = position.y;
-                    renderZ = position.z;
-                    renderYaw = state.bodyYaw();
-                    packedLight = LightTexture.FULL_BRIGHT;
-                } else {
-                    renderX = Mth.lerp(partialTick, renderEntity.xOld, renderEntity.getX());
-                    renderY = Mth.lerp(partialTick, renderEntity.yOld, renderEntity.getY());
-                    renderZ = Mth.lerp(partialTick, renderEntity.zOld, renderEntity.getZ());
-                    renderYaw = Mth.lerp(partialTick, renderEntity.yRotO, renderEntity.getYRot());
-                    packedLight = dispatcher.getPackedLightCoords(renderEntity, partialTick);
-                }
+                Vec3 position = state.position();
+                renderX = position.x;
+                renderY = position.y;
+                renderZ = position.z;
+                renderYaw = state.bodyYaw();
+                packedLight = LightTexture.FULL_BRIGHT;
 
                 poseStack.pushPose();
                 try {
