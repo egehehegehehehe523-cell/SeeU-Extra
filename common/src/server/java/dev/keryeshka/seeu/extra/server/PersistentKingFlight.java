@@ -95,7 +95,7 @@ public final class PersistentKingFlight {
 
     private static KingData state(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(
-                new SavedData.Factory<>(KingData::new, KingData::load), DATA_NAME);
+                new SavedData.Factory<>(KingData::new, KingData::load, null), DATA_NAME);
     }
 
     private void findAndOffload(MinecraftServer server, ServerLevel level, KingData data) {
