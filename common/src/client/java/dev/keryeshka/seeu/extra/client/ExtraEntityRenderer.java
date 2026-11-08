@@ -31,6 +31,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.lang.reflect.Method;
+import java.lang.reflect.ReflectiveOperationException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -164,6 +166,12 @@ public final class ExtraEntityRenderer {
                         // Antarchy's synced royal data drives attack layers
                         // and phases, while the proxy owns the visual controller.
                         syncNativeKingState(liveKing, proxy.entity);
+                        proxy.nativeKingPresent = true;
+                    } else if (proxy.nativeKingPresent) {
+                        // The real King was offloaded/untracked. A former
+                        // attack must never remain on the retained proxy.
+                        KingBeamState.clear(proxy.entity);
+                        proxy.nativeKingPresent = false;
                     }
                     renderEntity = proxy.entity;
                     position = liveKing != null ? liveKing.position() : state.position();
@@ -303,8 +311,74 @@ public final class ExtraEntityRenderer {
         if (data != null) {
             destination.getEntityData().assignValues(data);
         }
+        // getNonDefaultValues() intentionally omits changes back to default.
+        // RoyalBossEntity's BEAM_ACTIVE defaults to false, so the normal
+        // entity-data copy alone leaves an old beam stuck on the proxy.
+        KingBeamState.copy(source, destination);
         if (source instanceof LivingEntity real && destination instanceof LivingEntity proxy) {
             proxy.setHealth(real.getHealth());
+        }
+    }
+
+    /**
+     * Antarchy is an optional runtime dependency, not a compile dependency.
+     * Its public beam API lets us mirror all three head beams without
+     * modifying vanilla/NeoVoxy rendering or restarting GeckoLib controllers.
+     */
+    private static final class KingBeamState {
+        private static final Object[] SLOTS;
+        private static final Method GET_END;
+        private static final Method SET_END;
+        private static boolean usable = true;
+
+        static {
+            Object[] slots = new Object[0];
+            Method get = null;
+            Method set = null;
+            try {
+                Class<?> boss = Class.forName(
+                        "com.craisinlord.antarchy.content.entity.royal.RoyalBossEntity");
+                Class<?> slot = Class.forName(
+                        "com.craisinlord.antarchy.content.entity.royal.RoyalHead$Slot");
+                slots = slot.getEnumConstants();
+                get = boss.getMethod("getRoyalBeamEndPosition", slot);
+                set = boss.getMethod("setRoyalBeamEndPosition", slot, Vec3.class);
+            } catch (ReflectiveOperationException | LinkageError failure) {
+                LOGGER.warn("Cannot synchronize optional Antarchy King beam visuals", failure);
+            }
+            SLOTS = slots;
+            GET_END = get;
+            SET_END = set;
+        }
+
+        private static void copy(Entity source, Entity destination) {
+            if (!usable || GET_END == null || SET_END == null) return;
+            try {
+                for (Object slot : SLOTS) {
+                    // A null end is important: it clears a previously active
+                    // beam instead of leaving the last synced coordinates.
+                    Vec3 end = (Vec3) GET_END.invoke(source, slot);
+                    SET_END.invoke(destination, slot, end);
+                }
+            } catch (ReflectiveOperationException | RuntimeException failure) {
+                disable(failure);
+            }
+        }
+
+        private static void clear(Entity destination) {
+            if (!usable || SET_END == null) return;
+            try {
+                for (Object slot : SLOTS) {
+                    SET_END.invoke(destination, slot, (Vec3) null);
+                }
+            } catch (ReflectiveOperationException | RuntimeException failure) {
+                disable(failure);
+            }
+        }
+
+        private static void disable(Exception failure) {
+            usable = false;
+            LOGGER.warn("Disabling Antarchy beam-state sync after an unexpected API mismatch", failure);
         }
     }
 
@@ -431,6 +505,7 @@ public final class ExtraEntityRenderer {
     }
 
     private static final class ProxyEntry {
+        private boolean nativeKingPresent;
         private final ClientLevel level;
         private final String typeId;
         private final Entity entity;
