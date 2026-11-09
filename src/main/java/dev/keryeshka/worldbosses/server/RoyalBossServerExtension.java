@@ -33,12 +33,20 @@ public final class RoyalBossServerExtension implements DistantEntityServerHooks.
     @Override public Set<String> entityTypes() { return types; }
     @Override public void tick(MinecraftServer server) {
         if (types.contains(KING)) king.tick(server);
-        if (types.contains(QUEEN)) queen.tick(server);
+        // Queen ticks on World Bosses' own NeoForge server-tick handler.
+        // Do not tick twice when SeeU Extra also calls this extension.
     }
     @Override public void updateBossBars(MinecraftServer server, ExtraServerSettings settings) {
         king.updateBossBars(server, settings);
-        queen.updateBossBars(server, settings);
+        // Queen's global bar is independent of SeeU's opt-in selector.
     }
+    /** Server owned: called once per tick, even when SeeU is disabled. */
+    public void tickQueen(MinecraftServer server) {
+        if (!types.contains(QUEEN)) return;
+        queen.tick(server);
+        queen.updateBossBarsIndependent(server);
+    }
+
     @Override public EntitySnapshot offloadedSnapshot(ServerLevel level, String typeId) {
         return switch (typeId) {
             case KING -> king.snapshot(level);

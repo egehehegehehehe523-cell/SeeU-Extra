@@ -36,3 +36,21 @@ dependency can be replaced by a normal versioned `compileOnly` dependency.
 The resulting standalone JAR is `build/libs/world-bosses-neoforge-1.21.1-0.1.0.jar`. Do not install the pre-split SeeU Extra build at the same time as Continuation. Fabric is intentionally not included for this Antarchy-specific addon.
 
 No Antarchy source files are bundled or replaced; the mixins target Antarchy's own King/Queen renderer and entity classes.
+
+## Queen initial integration (World Bosses 0.1.x)
+
+On first launch with World Bosses installed, **the Queen** is enabled in SeeU
+Extra's client F8 list at a 2048-block / 128-chunk cap, with persistent
+animations. This only happens once: after that, F8 distance and disable choices
+are respected, even across restarts. The King remains exactly as configured.
+
+The Queen's independent offloaded flight and purple global boss bar now tick on
+World Bosses' own NeoForge server event, regardless of SeeU Extra's server
+entity selector. SeeU is still required for transmitting distant snapshots;
+server config rules and F8 per-entity selection still govern whether a viewer
+receives and sees those snapshots. The King's existing server loop and boss bar
+are unchanged. The Queen now uses continuous aerial idle flight by default,
+while native combat, landing stages and attacks retain Antarchy control.
+Existing `world-bosses-server.json` files created by the older unversioned
+release are migrated once from the old default `queenGlobalRoam: false` to
+`true`. Afterwards that setting can be changed freely.
