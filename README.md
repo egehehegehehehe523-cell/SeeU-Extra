@@ -1,6 +1,6 @@
 # SeeU Extra Continuation — Minecraft 1.21.1
 
-General-purpose distant non-player entity rendering through the [SeeU](https://github.com/cat4blep/SeeU) addon API. **This branch contains no Antarchy King or Queen simulation**: those mechanics belong to the separate World Bosses mod.
+General-purpose distant non-player entity rendering through the [SeeU](https://github.com/cat4blep/SeeU) addon API.
 
 ## F8 distant-entity configuration
 
@@ -10,7 +10,7 @@ Press **F8** to search registered entity types and opt them in one at a time. Ev
 
 ## Iris + NeoVoxy
 
-On NeoForge, SeeU Extra automatically applies the shader-only light/glow correction and NeoVoxy LOD-depth merge to **any enabled distant entity**, not just King/Queen. It reuses NeoVoxy's existing optional `VoxySableDepthShim` integration without mixing into NeoVoxy, Iris, or Minecraft. The extra depth work only runs beyond vanilla render chunks with an active shader pack, is scissored to conservative model bounds, and skips automatically when the compatible NeoVoxy helper is unavailable.
+On NeoForge, SeeU Extra automatically applies the shader-only light/glow correction and NeoVoxy LOD-depth merge to **any enabled distant entity**, not just King/Queen. It reuses NeoVoxy's existing optional `VoxySableDepthShim` integration. The extra depth work only runs beyond vanilla render chunks with an active shader pack, is scissored to conservative model bounds, and skips automatically when the compatible NeoVoxy helper is unavailable.
 
 Unloaded ordinary entities are represented by last-known snapshots and **do not simulate AI or combat**. Persistent worldboss motion belongs to the separate World Bosses mod, which registers with SeeU Extra's `DistantEntityServerHooks`. The normal renderer is independent of that addon and works without Antarchy installed.
 
