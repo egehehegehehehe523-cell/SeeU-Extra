@@ -61,7 +61,7 @@ public final class PendingRoyalBeams extends SavedData {
     private static void broadcast(ServerLevel level, UUID royalId, Vec3 impact, int remaining) {
         RoyalStrikeNetworking.broadcast(level,
                 new RoyalStrikePayload(royalId, impact, Math.max(0, remaining)),
-                RoyalHbmCompat.distantStrikeViewerRange());
+                RoyalHbmCompat.distantStrikeViewerRange() + 256.0D);
     }
 
     public static void tickAll(MinecraftServer server) {
