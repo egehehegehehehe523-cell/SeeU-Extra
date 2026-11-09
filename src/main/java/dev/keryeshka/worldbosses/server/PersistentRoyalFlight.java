@@ -45,11 +45,13 @@ import java.util.UUID;
  */
 public final class PersistentRoyalFlight {
     private static final Logger LOGGER = LoggerFactory.getLogger("World Bosses");
-    private static final double DETECTION_RANGE_SQUARED = 2048.0D * 2048.0D;
+    // Distant player pursuit is configurable; native simulation activation
+    // must remain independent so setting the range to zero cannot hide hitboxes.
     private static final double MAX_VERTICAL_SPEED = RoyalFlightMotion.MAX_VERTICAL_SPEED;
     private static final double WORLD_EDGE = RoyalFlightMotion.WORLD_EDGE;
     private final boolean enabled;
     private final WorldBossesOptions settings;
+    private final double pursuitRangeSquared;
     private final String typeId;
     private final String dataName;
     private final ResourceLocation flySound, roarSound;
@@ -64,6 +66,8 @@ public final class PersistentRoyalFlight {
                                  BossEvent.BossBarColor barColor, boolean enabled,
                                  boolean allowDistantDecrees, WorldBossesOptions settings) {
         this.settings = settings;
+        double pursuitBlocks = Math.max(0, Math.min(512, settings.distantPursuitRangeChunks)) * 16.0D;
+        this.pursuitRangeSquared = pursuitBlocks * pursuitBlocks;
         this.typeId = typeId;
         this.dataName = dataName;
         this.barColor = barColor;
@@ -276,7 +280,10 @@ public final class PersistentRoyalFlight {
         // rather than reselecting another player at the next 20-tick poll.
         // This UUID is only used for cheap player-only pursuit math, not for
         // native navigation/pathfinding into unloaded chunks.
-        if (king.getTarget() instanceof ServerPlayer victim && targetable(victim)) {
+        if (pursuitRangeSquared > 0.0D
+                && king.getTarget() instanceof ServerPlayer victim && targetable(victim)
+                && horizontalDistanceSquared(king.getX(), king.getZ(), victim.getX(), victim.getZ())
+                    <= pursuitRangeSquared) {
             currentTarget.put(level, victim.getUUID());
         } else {
             currentTarget.remove(level);
@@ -289,7 +296,9 @@ public final class PersistentRoyalFlight {
 
     private void simulate(MinecraftServer server, ServerLevel level, RoyalData data) {
         if (level.getGameTime() % 20L == 0L) {
-            ServerPlayer nearest = nearestPlayer(level, data.x, data.z, DETECTION_RANGE_SQUARED);
+            ServerPlayer nearest = pursuitRangeSquared > 0.0D
+                    ? nearestPlayer(level, data.x, data.z, pursuitRangeSquared)
+                    : null;
             if (nearest == null) {
                 currentTarget.remove(level);
             } else {
@@ -301,9 +310,10 @@ public final class PersistentRoyalFlight {
         UUID chosen = currentTarget.get(level);
         if (chosen != null) {
             ServerPlayer found = server.getPlayerList().getPlayer(chosen);
-            if (found != null && found.serverLevel() == level && targetable(found)
+            if (pursuitRangeSquared > 0.0D
+                    && found != null && found.serverLevel() == level && targetable(found)
                     && horizontalDistanceSquared(data.x, data.z, found.getX(), found.getZ())
-                    <= DETECTION_RANGE_SQUARED) {
+                    <= pursuitRangeSquared) {
                 player = found;
             }
         }
@@ -312,8 +322,13 @@ public final class PersistentRoyalFlight {
         // entity-ticking. No tickets, pathfinding, block reads or generation.
         // Restore the real King for combat and vanilla damage interaction even
         // when the nearby player is Creative. He still chases survival only.
+        // Activation follows Minecraft's server simulation distance, NOT the
+        // configurable pursuit distance. Range 0 disables distant chasing but
+        // does not block real hitboxes, landing, or native boss combat.
+        double nativeActivationProbe = Math.max(16.0D,
+                (server.getPlayerList().getSimulationDistance() - 1) * 16.0D);
         ServerPlayer nearbyForActivation = nearestPresentPlayer(
-                level, data.x, data.z, DETECTION_RANGE_SQUARED);
+                level, data.x, data.z, nativeActivationProbe * nativeActivationProbe);
         if (nearbyForActivation != null
                 && withinActivationDistance(server, data, nearbyForActivation)) {
             // tryRestore clears data.base on success; keep the UUID for
