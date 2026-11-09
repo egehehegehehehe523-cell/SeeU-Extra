@@ -125,19 +125,10 @@ public final class PersistentRoyalFlight {
      * sounds but is hidden while this event is enabled (Antarchy-only mixin).
      */
     public void updateBossBars(MinecraftServer server, ExtraServerSettings settings) {
-        updateBossBarsSelected(server, settings.enabled() && settings.selector().selects(typeId));
-    }
-
-    /** Addon-owned boss bars do not depend on SeeU's transport settings. */
-    public void updateBossBarsIndependent(MinecraftServer server) {
-        updateBossBarsSelected(server, true);
-    }
-
-    private void updateBossBarsSelected(MinecraftServer server, boolean selected) {
         Set<ServerLevel> present = java.util.Collections.newSetFromMap(
                 new IdentityHashMap<>());
         if (enabled && dev.keryeshka.worldbosses.WorldBossesOptions.globalBars
-                && selected) {
+                && settings.enabled() && settings.selector().selects(typeId)) {
             for (ServerLevel level : server.getAllLevels()) {
                 RoyalData data = state(level);
                 float health;
