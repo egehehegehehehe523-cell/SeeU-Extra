@@ -13,6 +13,8 @@ public final class WorldBosses {
     public static final String MOD_ID = "world_bosses";
     public WorldBosses() {
         WorldBossesOptions config = WorldBossesOptions.load(FMLPaths.CONFIGDIR.get());
+        // Separate 72-stat profile: always takes precedence over antarchy_mobs.toml.
+        dev.keryeshka.worldbosses.server.RoyalStatOverrides.load(FMLPaths.CONFIGDIR.get());
         DistantEntityServerHooks.register(new RoyalBossServerExtension(config));
         RoyalHbmCompat.configure(config);
         NeoForge.EVENT_BUS.addListener(RoyalHbmCompat::onIncomingDamage);
