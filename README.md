@@ -80,3 +80,36 @@ terrain modification radius, not just particle size or cooldown.
 HBM build-time dependency here. The optional mixins are version-specific to
 NTM: Continuum and Antarchy 1.21.1 and require an in-game integration test
 with the installed NTM build.
+
+
+## Persistent pursuit and King's Treason
+
+- Native/offloaded transitions now retain the current target UUID whenever it is
+  still targetable, avoiding unnecessary re-targeting just because a nearby
+  chunk became entity-ticking. No extra chunk tickets or distant pathfinding.
+- Persistent flight remains a **logical server-side stand-in** outside entity
+  ticking chunks; its steering is independent of loaded blocks. Native Antarchy
+  AI remains responsible for physical combat/landing and action-specific motion.
+  The complete no-mode-switch movement-director refactor is **not** implemented
+  by this target-handoff change alone.
+- A successful *Decree violation* awards the King exactly one **Treason point**.
+  Antarchy's native `violateDecree` path credits only the first violation of
+  that proclamation per participant. The four offloaded player-state decrees
+  credit the same point through World Bosses' persistent flight state.
+- Treason persists across native/offloaded transitions and ordinary saves.
+  The server-only `RoyalTreason.points/award/trySpend` API is ready for
+  special attacks; **no points are spent and no grabs trigger yet** until the
+  corresponding King animations and model anchors exist.
+
+### Animating a future Treason grab
+
+Antarchy already uses GeckoLib's `GeoBone.setTrackingMatrices(true)` and
+`getWorldPosition()` to attach royal beam endpoints smoothly to moving bones.
+The same renderer-side technique can anchor a player's *visual model* to a
+new King bone such as `grab_anchor_right`. Parent that anchor to the moving
+hand/palm in the King geo model, then animate the hand with named attack
+sequences (for example `treason_grab`, `treason_slam`, `treason_throw`).
+The client interpolates the anchored model every rendered frame while the
+server retains authority over the player's collision box, damage, camera
+behavior, and guaranteed release on interruption. A player should never be
+teleported to raw 20-TPS bone positions to accomplish visual attachment.
