@@ -21,21 +21,24 @@ repositories {
     maven { url = 'https://maven.neoforged.net/releases' }
 }
 
-// These declarations are only the public API *signatures* of SeeU Extra 0.3.0.
-// They compile into a separate source set and are deliberately excluded from
-// the World Bosses mod JAR and its runtime classpath. SeeU Extra is still
-// required as a separate installed mod at runtime.
-sourceSets {
-    seeuApi
-}
+// Compile against the REAL SeeU Extra Continuation source API, without
+// requiring a manually supplied JAR and without bundling its classes.
+// Gradle automatically checks out the continuation branch via settings.gradle.
+// Continuation is a multi-project build: NeoForge contains client/server hooks,
+// while common contains the snapshot/config/protocol records.
 dependencies {
-    compileOnly sourceSets.seeuApi.output
+    compileOnly('dev.keryeshka.seeu.extra:neoforge') {
+        version { branch = 'seeu-extra-continuation' }
+        transitive = false
+    }
+    compileOnly('dev.keryeshka.seeu.extra:common') {
+        version { branch = 'seeu-extra-continuation' }
+        transitive = false
+    }
 }
 
 neoForge {
     version = project.neo_version
-    // Resolve Minecraft/NeoForge types for the isolated API signature source set.
-    addModdingDependenciesTo sourceSets.seeuApi
     runs {
         client { client() }
         server { server(); programArgument '--nogui' }

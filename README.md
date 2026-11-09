@@ -15,20 +15,23 @@ The config `config/world-bosses-server.json` controls enabling each boss, roamin
 
 ## Build (Java 21)
 
-Build World Bosses directly from this branch, without first downloading or compiling a SeeU Extra JAR:
+Build World Bosses directly with Java 21 and Git installed:
 
 ```bash
 ./gradlew clean build
 ```
 
-The build uses a small isolated `src/seeuApi/java` source set containing **compile-time
-signatures only** for the SeeU Extra Continuation 0.3.0 integration points.
-These signature classes are not in the distributed World Bosses JAR or runtime
-classpath; `check` verifies that they have not accidentally been packaged.
-If SeeU Extra's public API changes in a future version, these signatures must
-be updated to match that version. **The actual SeeU Extra Continuation mod
-remains required when playing**; this change only eliminates the manual build
-dependency and the former `-PseeuExtraJar` parameter.
+There is **no local SeeU Extra JAR and no API-stub source set**. Gradle's
+`sourceControl` in `settings.gradle` automatically checks out the
+`seeu-extra-continuation` branch of this repository and resolves real
+`:neoforge` and `:common` sources as **compile-only** dependencies.
+On the first build this requires Internet access and may take longer while
+SeeU Extra and NeoForge are compiled; subsequent Gradle builds can reuse caches.
+The bundled addon still only contains World Bosses classes (`check` verifies
+this), and the real `seeu_extra` mod is **required separately at runtime**.
+
+If you later publish SeeU Extra Continuation as a Maven artifact, the source
+dependency can be replaced by a normal versioned `compileOnly` dependency.
 
 The resulting standalone JAR is `build/libs/world-bosses-neoforge-1.21.1-0.1.0.jar`. Do not install the pre-split SeeU Extra build at the same time as Continuation. Fabric is intentionally not included for this Antarchy-specific addon.
 

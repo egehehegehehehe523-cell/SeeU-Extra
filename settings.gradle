@@ -9,3 +9,14 @@ plugins {
     id "org.gradle.toolchains.foojay-resolver-convention" version "1.0.0"
 }
 rootProject.name = "World-Bosses"
+
+
+// Fetch the real SeeU Extra Continuation branch on demand. The project has
+// not published a release JAR/Maven artifact, so a binary compileOnly
+// dependency cannot be resolved directly from repositories yet.
+sourceControl {
+    gitRepository(uri("https://github.com/egehehegehehehe523-cell/SeeU-Extra-Additions.git")) {
+        producesModule("dev.keryeshka.seeu.extra:neoforge")
+        producesModule("dev.keryeshka.seeu.extra:common")
+    }
+}
