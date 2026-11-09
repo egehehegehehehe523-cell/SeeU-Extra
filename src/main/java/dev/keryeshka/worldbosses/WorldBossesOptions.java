@@ -18,8 +18,14 @@ public final class WorldBossesOptions {
     public boolean globalBossBars = true;
     // Optional HBM integration; the addon keeps native abilities if HBM is absent.
     public boolean hbmAbilities = true;
-    public int kingNuclearStrength = 150;
-    public int queenBalefireStrength = 150;
+    // HBM's strengths are actual crater radii, not TNT-damage multipliers.
+    // These deliberately tiny royal-boss radii avoid hundreds of LOD updates.
+    public static final int DEFAULT_KING_NUCLEAR_STRENGTH = 16;
+    public static final int DEFAULT_QUEEN_BALEFIRE_STRENGTH = 12;
+    public static final int MAX_KING_NUCLEAR_STRENGTH = 24;
+    public static final int MAX_QUEEN_BALEFIRE_STRENGTH = 18;
+    public int kingNuclearStrength = DEFAULT_KING_NUCLEAR_STRENGTH;
+    public int queenBalefireStrength = DEFAULT_QUEEN_BALEFIRE_STRENGTH;
     public float queenBlackHoleMaxSize = 6.4F; // HBM pull radius = size * 15
     public int queenBlackHoleLifetimeTicks = 100;
     public boolean royalHbmImmunity = true;
@@ -40,6 +46,19 @@ public final class WorldBossesOptions {
                     ? GSON.fromJson(Files.readString(file), WorldBossesOptions.class)
                     : new WorldBossesOptions();
             if (options == null) throw new IllegalStateException("World Bosses config is empty");
+            // Existing installs already wrote 150-strength defaults to disk.
+            // Merely changing Java field initializers would leave every old
+            // world generating the enormous craters reported by players.
+            if (options.kingNuclearStrength == 150) {
+                options.kingNuclearStrength = DEFAULT_KING_NUCLEAR_STRENGTH;
+            }
+            if (options.queenBalefireStrength == 150) {
+                options.queenBalefireStrength = DEFAULT_QUEEN_BALEFIRE_STRENGTH;
+            }
+            options.kingNuclearStrength = Math.max(1, Math.min(
+                    MAX_KING_NUCLEAR_STRENGTH, options.kingNuclearStrength));
+            options.queenBalefireStrength = Math.max(1, Math.min(
+                    MAX_QUEEN_BALEFIRE_STRENGTH, options.queenBalefireStrength));
             kingWander = options.kingIdleWanderFallback;
             queenWander = options.queenIdleWanderFallback;
             kingRoam = options.kingGlobalRoam;
