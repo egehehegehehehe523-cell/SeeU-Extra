@@ -44,10 +44,10 @@ When `hbm` is installed, World Bosses hooks Antarchy's existing attack
 scheduling without changing Antarchy, NTM, or Neo-Voxy source files.
 
 - **King centre-head beam:** fires normally with locked aim, then calls HBM's
-  real *nuclear* custom-nuke stage (default nuclear strength 150) once the beam
+  real *nuclear* custom-nuke stage (default nuclear crater radius 16) once the beam
   expires. This is not the conventional 150-TNT stage.
 - **Queen centre-head beam:** calls the real HBM *Balefire / antimatter* stage
-  (default strength 150) at the last beam hitpoint after its firing duration.
+  (default Balefire crater radius 12) at the last beam hitpoint after its firing duration.
 - **Queen black hole:** keeps Antarchy's native telegraph, roar and particles;
   replaces the thrown hole with HBM's field at the already selected impact
   destination, grows to size 6.4 (96-block pull radius), and expires in 100
