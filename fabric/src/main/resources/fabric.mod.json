@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "id": "seeu_extra",
   "version": "${version}",
-  "name": "SeeU Extra Continuation",\n  "icon": "assets/seeu_extra/icon.png",
+  "name": "SeeU Extra Continuation",
+  "icon": "assets/seeu_extra/icon.png",
   "description": "Renders configured non-player entities beyond the vanilla tracking range through SeeU.",
   "authors": [
     "Keryesh4ka"
