@@ -12,10 +12,10 @@ import org.slf4j.LoggerFactory;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Rare ambient, downward head-beam shots by offloaded royals.
- * A candidate uses ONE loaded-chunk heightmap or ONE generator height query.
- * It never calls level.getChunk, creates a chunk ticket, or loads terrain in
- * order to acquire a strike target. HBM still owns any subsequent crater work.
+/** Rare terrain-targeted head beams by offloaded royals.
+ * Candidates use a non-loading chunk heightmap or generator base height;
+ * the flying boss's altitude is intentionally not a targeting constraint.
+ * No chunk tickets or forced terrain generation for choosing impacts.
  */
 public final class DistantRoyalStrikes {
     private static final Logger LOGGER = LoggerFactory.getLogger("World Bosses");
@@ -30,7 +30,7 @@ public final class DistantRoyalStrikes {
     }
 
     public static boolean schedule(ServerLevel level, UUID bossId, String bossType,
-                                   double bossX, double bossY, double bossZ, float yaw,
+                                   double bossX, double bossZ, float yaw,
                                    WorldBossesOptions config) {
         if (!config.distantGroundBeamStrikes || !RoyalHbmCompat.hbmAbilitiesReady()
                 || PendingRoyalBeams.hasPending(level, bossId)) return false;
@@ -41,12 +41,10 @@ public final class DistantRoyalStrikes {
         double minPlayerSq = (double) config.distantGroundBeamMinimumPlayerDistance
                 * config.distantGroundBeamMinimumPlayerDistance;
 
-        // Each trigger gets at most FOUR cheap candidate tests. The previous
-        // single roll frequently failed on the Queen when terrain rose near
-        // her altitude, so waiting through another three-minute cooldown
-        // could look like a broken ability.
-        // Only the initial call checks the loaded-chunk map. Unloaded areas
-        // use the generator's base height without creating a LevelChunk.
+        // Four bounded terrain samples improve eligibility without height
+        // comparisons against the boss. A low-flying Queen can still strike
+        // ground above her. Loaded chunks use their heightmap; unloaded
+        // areas use estimated worldgen ground elevation without loading.
         for (int attempt = 0; attempt < 4; attempt++) {
             // A head beam should go roughly FORWARD, not sideways or behind.
             double bearing = Math.toRadians(yaw + random.nextDouble(-28.0D, 28.0D));
@@ -74,12 +72,10 @@ public final class DistantRoyalStrikes {
                 continue;
             }
 
-            // The target must be BELOW the boss's middle head, but don't
-            // reject otherwise valid low Queen flights with the former
-            // overly strict 12-block altitude margin.
+            // Ground elevation does not depend on the royal's Y coordinate.
+            // Only reject invalid or out-of-build-height terrain results.
             if (surface <= level.getMinBuildHeight() + 5
-                    || surface > level.getMaxBuildHeight() - 5
-                    || surface + 4.0D >= bossY) continue;
+                    || surface > level.getMaxBuildHeight() - 5) continue;
 
             double impactY = surface + 0.25D;
             boolean protectedPlayer = false;
