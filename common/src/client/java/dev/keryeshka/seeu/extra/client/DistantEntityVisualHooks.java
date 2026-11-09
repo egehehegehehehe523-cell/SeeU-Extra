@@ -12,6 +12,8 @@ public final class DistantEntityVisualHooks {
         default double renderMargin(Entity entity) { return 8.0D; }
         default void syncNativeState(Entity nativeEntity, Entity proxy) {}
         default void detached(Entity proxy) {}
+        /** Client render-tick hook for optional addon-specific proxy animation recovery. */
+        default void proxyUpdated(Entity proxy, boolean nativePresent) {}
     }
     private static final Map<String, Adapter> ADAPTERS = new ConcurrentHashMap<>();
     private DistantEntityVisualHooks() {}
