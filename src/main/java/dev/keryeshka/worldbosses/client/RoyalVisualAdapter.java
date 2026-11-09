@@ -120,9 +120,13 @@ public final class RoyalVisualAdapter implements DistantEntityVisualHooks.Adapte
                 // entity is engaged; otherwise the persistent strike renders.
                 Vec3 nativeEndpoint = nativePresent
                         ? (Vec3) GET_END.invoke(proxy, centre) : null;
-                if (nativeEndpoint == null || distantBeamApplied.containsKey(proxy)) {
+                if (nativeEndpoint == null) {
                     SET_END.invoke(proxy, centre, impact);
                     distantBeamApplied.put(proxy, Boolean.TRUE);
+                } else {
+                    // A real combat beam always wins; don't override its
+                    // endpoint with the older offloaded ground strike.
+                    distantBeamApplied.remove(proxy);
                 }
             } else if (distantBeamApplied.remove(proxy) != null && !nativePresent) {
                 SET_END.invoke(proxy, centre, (Object) null);
