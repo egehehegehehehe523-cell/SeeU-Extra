@@ -110,7 +110,17 @@ public final class RoyalHbmCompat {
     public static boolean detonateRoyalBeam(ServerLevel level, Entity royal, Vec3 hit) {
         if (!hbmAbilitiesReady() || hit == null || !isRoyal(royal)) return false;
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(royal.getType());
-        boolean queen = id != null && "queen".equals(id.getPath());
+        return detonateRoyalBeam(level, royal.getUUID(), id.toString(), hit);
+    }
+
+    /**
+     * Detonate a committed royal beam after its original entity has been
+     * offloaded. Ownership and type are preserved in dimension SavedData.
+     */
+    public static boolean detonateRoyalBeam(ServerLevel level, UUID owner, String royalType, Vec3 hit) {
+        if (!hbmAbilitiesReady() || hit == null
+                || (!"antarchy:king".equals(royalType) && !"antarchy:queen".equals(royalType))) return false;
+        boolean queen = "antarchy:queen".equals(royalType);
         try {
             Class<?> custom = Class.forName("com.hbm.explosion.ExplosionNukeCustom");
             Method detonate = custom.getMethod("explodeCustom",
@@ -127,7 +137,7 @@ public final class RoyalHbmCompat {
                     : Math.max(1, Math.min(WorldBossesOptions.MAX_KING_NUCLEAR_STRENGTH,
                             options.kingNuclearStrength));
             // No TNT stage: the King gets genuine nuclear, Queen gets genuine Balefire.
-            detonate.invoke(null, level, royal.getUUID(),
+            detonate.invoke(null, level, owner,
                     hit.x, hit.y, hit.z,
                     0F, queen ? 0F : strength, 0F, queen ? strength : 0F,
                     0F, 0F, 0F);
