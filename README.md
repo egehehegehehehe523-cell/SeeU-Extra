@@ -166,20 +166,26 @@ When NTM: Continuum is available, King and Queen may occasionally fire a
 centre-head beam *at the ground while offloaded beyond normal entity ticking*.
 This is an ambient strike, not an extra normal-range combat attack.
 
-The server selects one random ground point ahead/sideways of the flying boss,
-using a loaded chunk's heightmap when available, or a single chunk-generator
-height estimate otherwise. **Target selection never requests/generates chunks.**
+The server tries up to four ground positions within a **28-degree forward cone**
+and 32–96 blocks of the flying boss, using a loaded chunk's heightmap when
+available, or a bounded number of chunk-generator height estimates otherwise. **Target selection never requests/generates chunks.**
 An approximate height may miss player-built or structure-modified terrain;
 the HBM crater itself can still update/load chunks. Candidate points too high
 for a downward beam or too close to players are rejected.
 
 World Bosses uses a tiny NeoForge client packet to show the centre-head beam
 through Antarchy's existing SeeU proxy renderer (no extra shader, Voxy or
-Minecraft mixin). The 45-tick default beam remains on screen before its
+Minecraft mixin). The proxy also triggers Antarchy's existing GeckoLib
+`head_center` / `shoot` (`shoot_1`) animation once per strike, rather than
+replaying it on periodic sync packets. The 45-tick default beam remains on screen before its
 normal HBM explosion; HBM/Voxy nuke sync handles distant mushroom clouds and
 updated terrain. Strikes are persisted as a SavedData deadline and complete
 even when the royal returns to native simulation or the server restarts.
 Only one outstanding beam event per boss is allowed.
+The Queen's `queenGlobalRoam=false` setting only disables forced movement
+for her **native** ticking entity: she can still wander via Antarchy's normal
+AI and both bosses keep their logical offloaded roaming. Her distant beam
+is independent of `queenGlobalRoam`.
 
 Config in `world-bosses-server.json`:
 
@@ -188,7 +194,7 @@ Config in `world-bosses-server.json`:
   by default (plus a random 0–50% delay, approximately 3–4½ minutes)
 - `distantGroundBeamDurationTicks`: 45 by default
 - `distantGroundBeamMinimumRange` and `distantGroundBeamMaximumRange`:
-  48–160 blocks from the boss by default
+  32–96 blocks from the boss by default (old untouched 48/160 pairs migrate)
 - `distantGroundBeamMinimumPlayerDistance`: 48 blocks
 - `distantGroundBeamViewerRange`: 2048 blocks, plus 256 visual slack
 
