@@ -118,9 +118,14 @@ public final class RoyalHbmCompat {
                     double.class, double.class, double.class,
                     float.class, float.class, float.class, float.class,
                     float.class, float.class, float.class);
+            // HBM passes this value straight to its explosion crater radius.
+            // Apply the safety limits again at the spawn site, even if a
+            // programmatically-created config never went through load().
             float strength = queen
-                    ? Math.max(1, Math.min(350, options.queenBalefireStrength))
-                    : Math.max(1, Math.min(200, options.kingNuclearStrength));
+                    ? Math.max(1, Math.min(WorldBossesOptions.MAX_QUEEN_BALEFIRE_STRENGTH,
+                            options.queenBalefireStrength))
+                    : Math.max(1, Math.min(WorldBossesOptions.MAX_KING_NUCLEAR_STRENGTH,
+                            options.kingNuclearStrength));
             // No TNT stage: the King gets genuine nuclear, Queen gets genuine Balefire.
             detonate.invoke(null, level, royal.getUUID(),
                     hit.x, hit.y, hit.z,
