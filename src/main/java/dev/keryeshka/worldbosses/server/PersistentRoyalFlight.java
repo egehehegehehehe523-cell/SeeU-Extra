@@ -255,7 +255,15 @@ public final class PersistentRoyalFlight {
             distantDecrees.inheritNativeCooldown(level, nativeCooldown);
         }
         lastLiveBoss.remove(level);
-        currentTarget.remove(level);
+        // Preserve the same pursuit target during native -> logical handoff
+        // rather than reselecting another player at the next 20-tick poll.
+        // This UUID is only used for cheap player-only pursuit math, not for
+        // native navigation/pathfinding into unloaded chunks.
+        if (king.getTarget() instanceof ServerPlayer victim && targetable(victim)) {
+            currentTarget.put(level, victim.getUUID());
+        } else {
+            currentTarget.remove(level);
+        }
         // Discard, not unload: never leave a second boss stored in his old chunk.
         king.discard();
         LOGGER.info("Royal boss {} entered persistent flight in {}", base.uuid(),
