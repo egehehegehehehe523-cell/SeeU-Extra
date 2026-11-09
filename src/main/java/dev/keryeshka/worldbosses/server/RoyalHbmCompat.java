@@ -49,6 +49,10 @@ public final class RoyalHbmCompat {
         return options.hbmAbilities && ModList.get().isLoaded("hbm");
     }
 
+    public static double distantStrikeViewerRange() {
+        return Math.max(128, Math.min(4096, options.distantGroundBeamViewerRange));
+    }
+
     public static boolean royalImmunityEnabled() {
         return options.royalHbmImmunity && ModList.get().isLoaded("hbm");
     }
