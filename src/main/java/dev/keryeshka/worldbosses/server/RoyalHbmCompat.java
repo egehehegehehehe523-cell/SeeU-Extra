@@ -62,8 +62,14 @@ public final class RoyalHbmCompat {
     /** Only exclude companions and royal projectiles from the Queen's own HBM hole. */
     public static boolean isQueenMinionOrRoyalProjectile(Entity entity) {
         ResourceLocation id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-        if (id != null && id.equals(ResourceLocation.fromNamespaceAndPath("antarchy", "manticore"))) {
-            return true;
+        if (id != null && "antarchy".equals(id.getNamespace())) {
+            // These are Antarchy's royal-specific attack entities, including
+            // the non-Projectile ice-spike and black-hole variants.
+            switch (id.getPath()) {
+                case "manticore", "royal_bolt", "royal_elemental_projectile",
+                        "royal_ice_spike", "royal_assailant_black_hole",
+                        "royal_black_hole" -> { return true; }
+            }
         }
         if (entity instanceof Projectile projectile) {
             Entity owner = projectile.getOwner();
