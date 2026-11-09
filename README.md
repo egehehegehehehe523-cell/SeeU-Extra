@@ -28,3 +28,12 @@ The network protocol is **version 4**. Both server and client must use the same 
 Java 21, Minecraft 1.21.1. Run `./gradlew clean build` to produce separate Fabric and NeoForge JARs in each loader's `build/libs`. Do not install this fork alongside the old SeeU Extra; they share the `seeu_extra` mod ID.
 
 This branch retains the F8 interface, per-type render distances, configurable server restrictions, interpolation, proxy quarantine and long-range support independently of World Bosses.
+
+### Third-party opt-in defaults
+
+The NeoForge client exposes
+`SeeUExtraNeoForgeClient.enableDistantEntityByDefaultOnce(id, distanceBlocks)`
+for independent addons such as World Bosses. It adds an F8 distant-entity
+preset only on that addon's first installation. It never bundles addon logic,
+and the user can then disable it or alter the distance in F8 without being
+overridden on later launches. Other entities remain disabled by default.

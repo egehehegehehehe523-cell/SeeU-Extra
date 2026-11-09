@@ -28,6 +28,8 @@ public final class SeeUExtraClientConfig {
     // An absent entity ID is disabled. This map contains ONLY opted-in entity types.
     public Map<String, Integer> entityDistances = new TreeMap<>();
     public Set<String> persistentAnimations = new TreeSet<>();
+    /** Entity defaults installed once by registered addons; user F8 choices win later. */
+    public Set<String> initializedAddonDefaults = new TreeSet<>();
     private transient Path configPath;
 
     public static SeeUExtraClientConfig load(Path configDirectory) {
@@ -59,6 +61,22 @@ public final class SeeUExtraClientConfig {
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to save config: " + configPath, exception);
         }
+    }
+
+    /** Idempotent first-install preset. Existing F8 selections are not changed. */
+    public void enableByDefaultOnce(String typeId, int rangeBlocks) {
+        if (!ResourceIdentifier.isValid(typeId) || rangeBlocks <= 0) return;
+        if (initializedAddonDefaults == null) initializedAddonDefaults = new TreeSet<>();
+        if (!initializedAddonDefaults.add(typeId)) return;
+        // A pre-existing explicit distance is never overwritten.
+        if (!isEntityEnabled(typeId) && maximumDistanceBlocks > 0) {
+            setEntityEnabled(typeId, true);
+            if (isEntityEnabled(typeId)) {
+                setEntityDistance(typeId, Math.min(rangeBlocks, maximumDistanceBlocks));
+                setPersistentAnimation(typeId, true);
+            }
+        }
+        save();
     }
 
     public boolean isEntityEnabled(String typeId) {
@@ -147,6 +165,14 @@ public final class SeeUExtraClientConfig {
             }
         }
         persistentAnimations = validatedAnimations;
+        // Persist first-install markers even when an entity was disabled in F8.
+        Set<String> validDefaults = new TreeSet<>();
+        if (initializedAddonDefaults != null) {
+            for (String type : initializedAddonDefaults) {
+                if (ResourceIdentifier.isValid(type)) validDefaults.add(type);
+            }
+        }
+        initializedAddonDefaults = validDefaults;
     }
 
     private static int clamp(int value, int minimum, int maximum) {

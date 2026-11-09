@@ -21,6 +21,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 
 import java.util.function.Supplier;
+import java.util.Map;
+import java.util.TreeMap;
 
 @Mod(value = SeeUExtra.MOD_ID, dist = Dist.CLIENT)
 @EventBusSubscriber(modid = SeeUExtra.MOD_ID, value = Dist.CLIENT)
@@ -28,10 +30,16 @@ public final class SeeUExtraNeoForgeClient {
     private static SeeUExtraClientEndpoint endpoint;
     private static ExtraEntityRenderer renderer;
     private static SeeUExtraClientConfig configuration;
+    // Third-party addon defaults received before or after this mod's client
+    // constructor. Defaults are only applied once, never on every startup.
+    private static final Map<String, Integer> recommendedDistantTypes = new TreeMap<>();
 
     public SeeUExtraNeoForgeClient() {
         SeeUExtraClientConfig config = SeeUExtraClientConfig.load(FMLPaths.CONFIGDIR.get());
         configuration = config;
+        for (var entry : recommendedDistantTypes.entrySet()) {
+            config.enableByDefaultOnce(entry.getKey(), entry.getValue());
+        }
         ExtraEntityTracker tracker = new ExtraEntityTracker();
         renderer = new ExtraEntityRenderer(tracker);
         Supplier<ClientOffer> offerSupplier = config::offer;
@@ -85,6 +93,16 @@ public final class SeeUExtraNeoForgeClient {
                         consumers, draw)
         );
         consumers.endBatch();
+    }
+
+    /** An add-on can suggest a first-install default, without bypassing F8. */
+    public static void enableDistantEntityByDefaultOnce(String typeId, int rangeBlocks) {
+        if (typeId == null || rangeBlocks <= 0) return;
+        recommendedDistantTypes.putIfAbsent(typeId, rangeBlocks);
+        SeeUExtraClientConfig current = configuration;
+        if (current != null) {
+            current.enableByDefaultOnce(typeId, rangeBlocks);
+        }
     }
 
     /** Client-only bridge for optional independent renderer/cache adapters. */
