@@ -20,10 +20,11 @@ public final class WorldBossesOptions {
     public boolean hbmAbilities = true;
     // HBM's strengths are actual crater radii, not TNT-damage multipliers.
     // These deliberately tiny royal-boss radii avoid hundreds of LOD updates.
-    public static final int DEFAULT_KING_NUCLEAR_STRENGTH = 16;
-    public static final int DEFAULT_QUEEN_BALEFIRE_STRENGTH = 12;
-    public static final int MAX_KING_NUCLEAR_STRENGTH = 24;
-    public static final int MAX_QUEEN_BALEFIRE_STRENGTH = 18;
+    public static final int DEFAULT_KING_NUCLEAR_STRENGTH = 30;
+    public static final int DEFAULT_QUEEN_BALEFIRE_STRENGTH = 30;
+    // Allow deliberate configuration above the default, while bounding extreme crater loads.
+    public static final int MAX_KING_NUCLEAR_STRENGTH = 100;
+    public static final int MAX_QUEEN_BALEFIRE_STRENGTH = 100;
     public int kingNuclearStrength = DEFAULT_KING_NUCLEAR_STRENGTH;
     public int queenBalefireStrength = DEFAULT_QUEEN_BALEFIRE_STRENGTH;
     public float queenBlackHoleMaxSize = 6.4F; // HBM pull radius = size * 15
@@ -49,6 +50,12 @@ public final class WorldBossesOptions {
             // Existing installs already wrote 150-strength defaults to disk.
             // Merely changing Java field initializers would leave every old
             // world generating the enormous craters reported by players.
+            // Prior releases wrote 150, then 16/12 as their defaults.
+            // Migrate the old default PAIR, not independently customized values.
+            if (options.kingNuclearStrength == 16 && options.queenBalefireStrength == 12) {
+                options.kingNuclearStrength = DEFAULT_KING_NUCLEAR_STRENGTH;
+                options.queenBalefireStrength = DEFAULT_QUEEN_BALEFIRE_STRENGTH;
+            }
             if (options.kingNuclearStrength == 150) {
                 options.kingNuclearStrength = DEFAULT_KING_NUCLEAR_STRENGTH;
             }
