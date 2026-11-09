@@ -294,7 +294,7 @@ public final class PersistentRoyalFlight {
             // tryRestore clears data.base on success; keep the UUID for
             // the immediate native entity lookup after the handoff.
             UUID kingId = data.base.uuid();
-            if (tryRestore(level, data)) {
+            if (tryRestore(level, data, player)) {
                 lastLiveBoss.put(level, kingId);
                 currentTarget.remove(level);
                 if (distantDecrees != null) {
@@ -363,7 +363,7 @@ public final class PersistentRoyalFlight {
                 <= radius * radius;
     }
 
-    private boolean tryRestore(ServerLevel level, RoyalData state) {
+    private boolean tryRestore(ServerLevel level, RoyalData state, ServerPlayer pursuitTarget) {
         BlockPos destination = BlockPos.containing(state.x, state.y, state.z);
         if (!level.getChunkSource().hasChunk(destination.getX() >> 4, destination.getZ() >> 4)
                 || !level.isPositionEntityTicking(destination)) {
@@ -405,6 +405,15 @@ public final class PersistentRoyalFlight {
         if (!level.addFreshEntity(king)) {
             // A UUID collision must never create a second authoritative King.
             return false;
+        }
+        // Preserve the logical pursuit target rather than requiring native AI
+        // to rediscover it as the boss enters entity-ticking range. Only hand
+        // off a nearby survival player: Antarchy's native combat/navigation
+        // should never try to pathfind into unloaded distant chunks.
+        if (pursuitTarget != null && targetable(pursuitTarget)
+                && pursuitTarget.serverLevel() == level
+                && king.distanceToSqr(pursuitTarget) <= 96.0D * 96.0D) {
+            ((Mob) king).setTarget(pursuitTarget);
         }
 
         UUID id = state.base.uuid();
