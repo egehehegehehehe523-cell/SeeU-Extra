@@ -17,6 +17,10 @@ public final class WorldBossesOptions {
     public int distantPursuitRangeChunks = 64;
     public boolean kingIdleWanderFallback = true;
     public boolean queenIdleWanderFallback = true;
+    // When true, the addon forces perpetual directional idle flight while
+    // native chunks are ticking. False leaves Antarchy's normal wandering
+    // and the optional idleWanderFallback enabled; distant flight continues
+    // independently of either flag, so false does NOT mean "stop moving".
     public boolean kingGlobalRoam = true;
     public boolean queenGlobalRoam = false;
     public boolean globalBossBars = true;
@@ -42,8 +46,10 @@ public final class WorldBossesOptions {
     public int kingDistantBeamCooldownTicks = 3600;   // at least 3 min
     public int queenDistantBeamCooldownTicks = 3600;
     public int distantGroundBeamDurationTicks = 45;   // visible beam before blast
-    public int distantGroundBeamMinimumRange = 48;
-    public int distantGroundBeamMaximumRange = 160;
+    // Short, mostly forward Godzilla beam. These are horizontal distances
+    // from the boss, not the distance from a player.
+    public int distantGroundBeamMinimumRange = 32;
+    public int distantGroundBeamMaximumRange = 96;
     public int distantGroundBeamMinimumPlayerDistance = 48;
     public int distantGroundBeamViewerRange = 2048;   // 128 chunks
 
@@ -91,6 +97,13 @@ public final class WorldBossesOptions {
                     Math.min(72000, options.queenDistantBeamCooldownTicks));
             options.distantGroundBeamDurationTicks = Math.max(10,
                     Math.min(200, options.distantGroundBeamDurationTicks));
+            // Upgrade untouched early defaults without overwriting a
+            // player-customized minimum/maximum range pair.
+            if (options.distantGroundBeamMinimumRange == 48
+                    && options.distantGroundBeamMaximumRange == 160) {
+                options.distantGroundBeamMinimumRange = 32;
+                options.distantGroundBeamMaximumRange = 96;
+            }
             options.distantGroundBeamMinimumRange = Math.max(16,
                     Math.min(512, options.distantGroundBeamMinimumRange));
             options.distantGroundBeamMaximumRange = Math.max(
