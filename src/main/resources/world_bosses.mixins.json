@@ -7,6 +7,7 @@
     "KingIdleWanderMixin",
     "QueenIdleWanderMixin",
     "KingDecreeCooldownMixin",
+    "KingTreasonMixin",
     "RoyalGlobalBossBarMixin",
     "RoyalBeamNukeMixin",
     "QueenHbmBlackHoleMixin",
