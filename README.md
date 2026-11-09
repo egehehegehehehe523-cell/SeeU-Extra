@@ -151,3 +151,42 @@ Treason grab animations remain a separate future feature. Attach a
 `grab_anchor_right` model bone to the King's grabbing hand and provide
 the updated model and animation files before implementing bone-followed
 player visuals and server-authoritative grabs.
+
+
+## Distant Godzilla-style ground beam strikes
+
+When NTM: Continuum is available, King and Queen may occasionally fire a
+centre-head beam *at the ground while offloaded beyond normal entity ticking*.
+This is an ambient strike, not an extra normal-range combat attack.
+
+The server selects one random ground point ahead/sideways of the flying boss,
+using a loaded chunk's heightmap when available, or a single chunk-generator
+height estimate otherwise. **Target selection never requests/generates chunks.**
+An approximate height may miss player-built or structure-modified terrain;
+the HBM crater itself can still update/load chunks. Candidate points too high
+for a downward beam or too close to players are rejected.
+
+World Bosses uses a tiny NeoForge client packet to show the centre-head beam
+through Antarchy's existing SeeU proxy renderer (no extra shader, Voxy or
+Minecraft mixin). The 45-tick default beam remains on screen before its
+normal HBM explosion; HBM/Voxy nuke sync handles distant mushroom clouds and
+updated terrain. Strikes are persisted as a SavedData deadline and complete
+even when the royal returns to native simulation or the server restarts.
+Only one outstanding beam event per boss is allowed.
+
+Config in `world-bosses-server.json`:
+
+- `distantGroundBeamStrikes`: true by default; disable all ambient ground shots
+- `kingDistantBeamCooldownTicks`, `queenDistantBeamCooldownTicks`: 3600
+  by default (plus a random 0–50% delay, approximately 3–4½ minutes)
+- `distantGroundBeamDurationTicks`: 45 by default
+- `distantGroundBeamMinimumRange` and `distantGroundBeamMaximumRange`:
+  48–160 blocks from the boss by default
+- `distantGroundBeamMinimumPlayerDistance`: 48 blocks
+- `distantGroundBeamViewerRange`: 2048 blocks, plus 256 visual slack
+
+The existing `kingNuclearStrength` / `queenBalefireStrength` values (30 by
+default) apply to these explosions too. The normal Antarchy centre-beam
+cooldown is also respected in persistent flight and is credited when a random
+strike fires. No Voxy chunk queue or RAM defaults are changed. No distant
+beam damage ticks or entity-hitbox simulation are introduced.
