@@ -248,19 +248,19 @@ public final class PersistentRoyalFlight {
             LOGGER.error("Could not serialize King flight state; keeping the real King alive", failure);
             return;
         }
+        // Capture the beam BEFORE clearing a native Decree. Antarchy's
+        // native cleanup can stop/cancel head attack callbacks, but an already
+        // committed blast must retain its original impact and expiry.
+        if (king instanceof RoyalPendingBeamAccess beamAccess) {
+            PendingRoyalBeams.schedule(level, king,
+                    beamAccess.worldbosses$capturePendingBeam(), typeId);
+        }
         if (distantDecrees != null) {
             int nativeCooldown = king instanceof KingDecreeCooldownAccess access
                     ? access.seeuExtra$finishDecreeForOffload() : 0;
             // If the live King has already issued a decree, its remaining
             // recovery must delay the distant version too.
             distantDecrees.inheritNativeCooldown(level, nativeCooldown);
-        }
-        // An already-fired centre beam must still explode when its
-        // original scheduled duration completes, even if its entity leaves
-        // Minecraft's entity-ticking area during the attack.
-        if (king instanceof RoyalPendingBeamAccess beamAccess) {
-            PendingRoyalBeams.schedule(level, king,
-                    beamAccess.worldbosses$capturePendingBeam(), typeId);
         }
         lastLiveBoss.remove(level);
         // Preserve the same pursuit target during native -> logical handoff
