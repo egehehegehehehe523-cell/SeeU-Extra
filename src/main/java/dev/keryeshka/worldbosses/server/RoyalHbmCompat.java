@@ -158,6 +158,12 @@ public final class RoyalHbmCompat {
     public static boolean spawnQueenHole(ServerLevel level, Vec3 anchor, UUID queenId) {
         if (!hbmAbilitiesReady() || anchor == null) return false;
         try {
+            // NTM discards black holes in peaceful/excluded dimensions.
+            // Keep Antarchy's original ability there rather than spawning
+            // an HBM entity that immediately vanishes.
+            Class<?> compatibility = Class.forName("com.hbm.config.CompatibilityConfig");
+            Object warDim = compatibility.getMethod("isWarDim", Level.class).invoke(null, level);
+            if (Boolean.FALSE.equals(warDim)) return false;
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(HBM_HOLE).orElse(null);
             if (type == null) return false;
             Entity hole = type.create(level);
