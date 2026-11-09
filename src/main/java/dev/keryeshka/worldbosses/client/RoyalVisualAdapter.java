@@ -22,6 +22,7 @@ public final class RoyalVisualAdapter implements DistantEntityVisualHooks.Adapte
     private static final Method SET_END;
     private static boolean usable = true;
     private boolean animationRecoveryUsable = true;
+    private boolean distantShootWarningLogged;
     private final Map<Entity, Long> lastAnimationRecoveryCheck = new WeakHashMap<>();
     private final Map<Entity, Boolean> distantBeamApplied = new WeakHashMap<>();
 
@@ -114,6 +115,10 @@ public final class RoyalVisualAdapter implements DistantEntityVisualHooks.Adapte
         }
         if (centre == null) return;
         Vec3 impact = RoyalStrikeClient.impact(proxy.getUUID());
+        if (impact != null && !nativePresent
+                && RoyalStrikeClient.needsShootAnimation(proxy.getUUID())) {
+            triggerDistantShootWhenReady(proxy);
+        }
         try {
             if (impact != null) {
                 // Native beams retain priority while the actual Antarchy
@@ -134,6 +139,36 @@ public final class RoyalVisualAdapter implements DistantEntityVisualHooks.Adapte
         } catch (ReflectiveOperationException | RuntimeException failure) {
             usable = false;
             LOGGER.warn("Disabling distant royal beam endpoint rendering", failure);
+        }
+    }
+
+    /**
+     * Antarchy's setRoyalBeamEndPosition only draws geometry. The actual
+     * shoot_1 animation is a separate triggerable GeckoLib controller on the
+     * centre head. Trigger that controller LOCALLY on SeeU's synthetic boss:
+     * calling GeoEntity.triggerAnim would send a tracking packet from the
+     * server and cannot reach this offloaded client-only entity.
+     *
+     * GeckoLib initializes controllers on first render. Don't consume the
+     * one-shot event until head_center really exists.
+     */
+    private void triggerDistantShootWhenReady(Entity proxy) {
+        try {
+            Object cache = proxy.getClass().getMethod("getAnimatableInstanceCache").invoke(proxy);
+            Object manager = cache.getClass().getMethod("getManagerForId", long.class)
+                    .invoke(cache, (long) proxy.getId());
+            Object controllers = manager.getClass().getMethod("getAnimationControllers").invoke(manager);
+            if (!(controllers instanceof Map<?, ?> byName) || !byName.containsKey("head_center")) {
+                return;
+            }
+            manager.getClass().getMethod("tryTriggerAnimation", String.class, String.class)
+                    .invoke(manager, "head_center", "shoot");
+            RoyalStrikeClient.acknowledgeShootAnimation(proxy.getUUID());
+        } catch (ReflectiveOperationException | RuntimeException failure) {
+            if (!distantShootWarningLogged) {
+                distantShootWarningLogged = true;
+                LOGGER.warn("Could not trigger GeckoLib centre-head animation for distant royal beam", failure);
+            }
         }
     }
 
