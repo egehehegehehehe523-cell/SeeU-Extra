@@ -5,7 +5,7 @@ import dev.keryeshka.worldbosses.client.RoyalStrikeClient;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -13,7 +13,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 /** Clientbound packets carry only the chosen impact and remaining timer;
  * no chunk data, ticket, or per-particle traffic is transmitted.
  */
-@Mod.EventBusSubscriber(modid = WorldBosses.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = WorldBosses.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class RoyalStrikeNetworking {
     private RoyalStrikeNetworking() {}
 
