@@ -387,8 +387,10 @@ public final class PersistentRoyalFlight {
         king.setYBodyRot(state.yaw);
         king.setYHeadRot(state.yaw);
         king.yRotO = state.yaw;
-        king.yBodyRotO = state.yaw;
-        king.yHeadRotO = state.yaw;
+        // Previous body/head angles live on LivingEntity, not Entity.
+        Mob restored = (Mob) king;
+        restored.yBodyRotO = state.yaw;
+        restored.yHeadRotO = state.yaw;
         if (king instanceof RoyalFlightSteeringAccess access) {
             access.seeuExtra$restoreFlightState(state.flight);
         }
