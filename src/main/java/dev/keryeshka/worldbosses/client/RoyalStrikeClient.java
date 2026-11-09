@@ -5,7 +5,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** Client-side render-only strike state; actual HBM blast is server owned.
@@ -13,6 +15,8 @@ import java.util.UUID;
  */
 public final class RoyalStrikeClient {
     private static final Map<UUID, Strike> ACTIVE = new HashMap<>();
+    // Defer the shoot trigger until GeckoLib's controller is initialized.
+    private static final Set<UUID> SHOOT_PENDING = new HashSet<>();
     private static Object levelIdentity;
     private record Strike(Vec3 impact, long expiresAt) {}
     private RoyalStrikeClient() {}
@@ -22,11 +26,19 @@ public final class RoyalStrikeClient {
         if (level == null) return;
         if (level != levelIdentity) {
             ACTIVE.clear();
+            SHOOT_PENDING.clear();
             levelIdentity = level;
         }
         if (packet.remainingTicks() <= 0) {
             ACTIVE.remove(packet.bossId());
+            SHOOT_PENDING.remove(packet.bossId());
         } else {
+            Strike previous = ACTIVE.get(packet.bossId());
+            if (previous == null || previous.impact().distanceToSqr(packet.impact()) > 0.001D) {
+                // Only a new strike triggers the animation; periodic
+                // synchronization never restarts the head shoot clip.
+                SHOOT_PENDING.add(packet.bossId());
+            }
             ACTIVE.put(packet.bossId(), new Strike(packet.impact(),
                     level.getGameTime() + Math.min(240, packet.remainingTicks())));
         }
@@ -36,6 +48,7 @@ public final class RoyalStrikeClient {
         var level = Minecraft.getInstance().level;
         if (level == null || level != levelIdentity) {
             ACTIVE.clear();
+            SHOOT_PENDING.clear();
             levelIdentity = level;
             return null;
         }
@@ -43,8 +56,17 @@ public final class RoyalStrikeClient {
         if (strike == null) return null;
         if (level.getGameTime() >= strike.expiresAt()) {
             ACTIVE.remove(royalId);
+            SHOOT_PENDING.remove(royalId);
             return null;
         }
         return strike.impact();
+    }
+
+    public static boolean needsShootAnimation(UUID royalId) {
+        return impact(royalId) != null && SHOOT_PENDING.contains(royalId);
+    }
+
+    public static void acknowledgeShootAnimation(UUID royalId) {
+        SHOOT_PENDING.remove(royalId);
     }
 }
