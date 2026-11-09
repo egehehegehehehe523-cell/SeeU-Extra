@@ -38,52 +38,70 @@ public final class DistantRoyalStrikes {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         double minRange = Math.max(16.0D, config.distantGroundBeamMinimumRange);
         double maxRange = Math.max(minRange, config.distantGroundBeamMaximumRange);
-        double yawDegrees = yaw + random.nextDouble(-105.0D, 105.0D);
-        double bearing = Math.toRadians(yawDegrees);
-        double distance = random.nextDouble(minRange, maxRange + 0.0001D);
-        double dx = bossX - Math.sin(bearing) * distance;
-        double dz = bossZ + Math.cos(bearing) * distance;
-        if (Math.abs(dx) > RoyalFlightMotion.WORLD_EDGE - 64
-                || Math.abs(dz) > RoyalFlightMotion.WORLD_EDGE - 64) return false;
+        double minPlayerSq = (double) config.distantGroundBeamMinimumPlayerDistance
+                * config.distantGroundBeamMinimumPlayerDistance;
 
-        int x = (int) Math.floor(dx);
-        int z = (int) Math.floor(dz);
-        int surface;
-        try {
-            // getChunkNow is explicitly non-loading. In distant terrain,
-            // getBaseHeight samples worldgen noise without allocating a chunk.
-            LevelChunk loaded = level.getChunkSource().getChunkNow(x >> 4, z >> 4);
-            surface = loaded != null
-                    ? loaded.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15)
-                    : level.getChunkSource().getGenerator().getBaseHeight(
-                            x, z, Heightmap.Types.WORLD_SURFACE_WG,
-                            level, level.getChunkSource().randomState());
-        } catch (RuntimeException error) {
-            if (!warnedHeightQuery) {
-                warnedHeightQuery = true;
-                LOGGER.warn("Cannot estimate distant royal beam terrain without loading chunks", error);
+        // Each trigger gets at most FOUR cheap candidate tests. The previous
+        // single roll frequently failed on the Queen when terrain rose near
+        // her altitude, so waiting through another three-minute cooldown
+        // could look like a broken ability.
+        // Only the initial call checks the loaded-chunk map. Unloaded areas
+        // use the generator's base height without creating a LevelChunk.
+        for (int attempt = 0; attempt < 4; attempt++) {
+            // A head beam should go roughly FORWARD, not sideways or behind.
+            double bearing = Math.toRadians(yaw + random.nextDouble(-28.0D, 28.0D));
+            double distance = minRange + (maxRange - minRange) * random.nextDouble();
+            double dx = bossX - Math.sin(bearing) * distance;
+            double dz = bossZ + Math.cos(bearing) * distance;
+            if (Math.abs(dx) >= RoyalFlightMotion.WORLD_EDGE - 64
+                    || Math.abs(dz) >= RoyalFlightMotion.WORLD_EDGE - 64) continue;
+
+            int x = (int) Math.floor(dx);
+            int z = (int) Math.floor(dz);
+            int surface;
+            try {
+                LevelChunk loaded = level.getChunkSource().getChunkNow(x >> 4, z >> 4);
+                surface = loaded != null
+                        ? loaded.getHeight(Heightmap.Types.WORLD_SURFACE, x & 15, z & 15)
+                        : level.getChunkSource().getGenerator().getBaseHeight(
+                                x, z, Heightmap.Types.WORLD_SURFACE_WG,
+                                level, level.getChunkSource().randomState());
+            } catch (RuntimeException error) {
+                if (!warnedHeightQuery) {
+                    warnedHeightQuery = true;
+                    LOGGER.warn("Failed estimating remote royal beam terrain without loading chunks", error);
+                }
+                continue;
             }
-            return false;
-        }
-        // Avoid sky beams, underwater/void heights, and shots travelling up
-        // through mountains above the boss. The exact terrain after structures
-        // or other mods may differ from raw worldgen's approximate base height.
-        if (surface <= level.getMinBuildHeight() + 5
-                || surface > level.getMaxBuildHeight() - 5
-                || surface + 12.0D >= bossY) return false;
 
-        double impactY = surface + 0.25D;
-        double minPlayerSq = Math.pow(config.distantGroundBeamMinimumPlayerDistance, 2);
-        for (ServerPlayer player : level.players()) {
-            if (!player.isRemoved() && player.isAlive()
-                    && player.distanceToSqr(dx, impactY, dz) < minPlayerSq) return false;
+            // The target must be BELOW the boss's middle head, but don't
+            // reject otherwise valid low Queen flights with the former
+            // overly strict 12-block altitude margin.
+            if (surface <= level.getMinBuildHeight() + 5
+                    || surface > level.getMaxBuildHeight() - 5
+                    || surface + 4.0D >= bossY) continue;
+
+            double impactY = surface + 0.25D;
+            boolean protectedPlayer = false;
+            for (ServerPlayer player : level.players()) {
+                if (!player.isRemoved() && player.isAlive()
+                        && player.distanceToSqr(dx, impactY, dz) < minPlayerSq) {
+                    protectedPlayer = true;
+                    break;
+                }
+            }
+            if (protectedPlayer) continue;
+
+            Vec3 impact = new Vec3(dx, impactY, dz);
+            if (PendingRoyalBeams.scheduleDistant(level, bossId, bossType,
+                    impact, config.distantGroundBeamDurationTicks)) {
+                LOGGER.debug("{} distant ground strike at {} {} {} (candidate {})",
+                        bossType, x, surface, z, attempt + 1);
+                return true;
+            }
+            return false; // Pending event already exists; don't try more targets.
         }
-        boolean started = PendingRoyalBeams.scheduleDistant(level, bossId, bossType,
-                new Vec3(dx, impactY, dz), config.distantGroundBeamDurationTicks);
-        if (started) {
-            LOGGER.debug("Scheduled {} remote ground beam at {}, {}, {}",
-                    bossType, x, surface, z);
-        }
-        return started;
+        LOGGER.debug("{} found no safe forward ground target (4 bounded tries)", bossType);
+        return false;
     }
 }
