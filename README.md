@@ -44,10 +44,10 @@ When `hbm` is installed, World Bosses hooks Antarchy's existing attack
 scheduling without changing Antarchy, NTM, or Neo-Voxy source files.
 
 - **King centre-head beam:** fires normally with locked aim, then calls HBM's
-  real *nuclear* custom-nuke stage (default nuclear crater radius 16) once the beam
+  real *nuclear* custom-nuke stage (default nuclear crater radius 30) once the beam
   expires. This is not the conventional 150-TNT stage.
 - **Queen centre-head beam:** calls the real HBM *Balefire / antimatter* stage
-  (default Balefire crater radius 12) at the last beam hitpoint after its firing duration.
+  (default Balefire crater radius 30) at the last beam hitpoint after its firing duration.
 - **Queen black hole:** keeps Antarchy's native telegraph, roar and particles;
   replaces the thrown hole with HBM's field at the already selected impact
   destination, grows to size 6.4 (96-block pull radius), and expires in 100
@@ -67,11 +67,14 @@ Settings in `config/world-bosses-server.json`: `hbmAbilities`,
 `royalHbmImmunity`. These explosions can destroy a very large area; test
 in a backed-up world. Existing Voxy snapshot/memory limits are unchanged.
 
-Existing 150-strength config values migrate to 16 (King nuclear) and 12 (Queen Balefire)
-automatically. Custom strengths are limited to 24 and 18 respectively, even
-if an old config or another mod supplies a higher value. This limits the
-actual HBM crater radius rather than reducing visual effects or merely
-increasing cooldowns.
+Both beam explosions default to HBM crater strength 30, configurable separately
+in `world-bosses-server.json`. Previous default pairs (16 King / 12 Queen)
+and legacy 150-strength settings migrate to 30 automatically. Configured
+strengths are permitted from 1 to 100, with a final safety clamp applied
+at detonation. The Queen's black-hole uptime is separately configurable
+using `queenBlackHoleLifetimeTicks`, default 100 (five seconds); its size
+remains configurable without changes. These values control HBM's actual
+terrain modification radius, not just particle size or cooldown.
 
 **Compatibility note:** HBM and Antarchy use separate source modules with no
 HBM build-time dependency here. The optional mixins are version-specific to
