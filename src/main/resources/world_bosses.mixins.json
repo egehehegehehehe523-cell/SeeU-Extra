@@ -4,6 +4,7 @@
   "package": "dev.keryeshka.worldbosses.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "AntarchyRoyalStatsMixin",
     "KingIdleWanderMixin",
     "QueenIdleWanderMixin",
     "KingDecreeCooldownMixin",
