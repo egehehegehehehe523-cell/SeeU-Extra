@@ -38,6 +38,8 @@ public abstract class KingIdleWanderMixin implements RoyalFlightSteeringAccess {
     @Unique private int seeuExtra$stationaryTicks;
     @Unique private boolean seeuExtra$steering;
     @Unique private int seeuExtra$recoveryTicks;
+    // Keep the last combat heading instead of resuming an old patrol bearing.
+    @Unique private boolean seeuExtra$wasFighting;
 
     /**
      * The persistent-flight King must have exactly one idle-flight controller.
@@ -48,6 +50,9 @@ public abstract class KingIdleWanderMixin implements RoyalFlightSteeringAccess {
     @Inject(method = "tick", at = @At("HEAD"), remap = false, require = 0)
     private void seeuExtra$beginIdleFlight(CallbackInfo ci) {
         Mob king = (Mob) (Object) this;
+        if (king.getTarget() != null) {
+            seeuExtra$wasFighting = true;
+        }
         if (!WorldBossesOptions.kingRoam || !(king.level() instanceof ServerLevel)
                 || !king.isAlive() || king.isNoAi() || king.getTarget() != null) {
             return;
@@ -61,6 +66,9 @@ public abstract class KingIdleWanderMixin implements RoyalFlightSteeringAccess {
     @Inject(method = "tick", at = @At("TAIL"), remap = false, require = 0)
     private void seeuExtra$directionalIdleFlight(CallbackInfo ci) {
         Mob king = (Mob) (Object) this;
+        if (king.getTarget() != null) {
+            seeuExtra$wasFighting = true;
+        }
         if (!(king.level() instanceof ServerLevel level) || !king.isAlive()
                 || king.isNoAi() || king.getTarget() != null
                 || (!WorldBossesOptions.kingRoam && !WorldBossesOptions.kingWander)) {
@@ -69,6 +77,15 @@ public abstract class KingIdleWanderMixin implements RoyalFlightSteeringAccess {
         }
 
         Vec3 position = king.position();
+        if (seeuExtra$wasFighting) {
+            // Antarchy owns all facing during combat. When it releases the
+            // target, discard the old wandering bearing rather than turning
+            // back toward a heading saved before the fight.
+            if (seeuExtra$flight != null) {
+                seeuExtra$flight.aimAt(king.getYRot(), position.y);
+            }
+            seeuExtra$wasFighting = false;
+        }
         if (WorldBossesOptions.kingRoam) {
             if (seeuExtra$flight == null) {
                 seeuExtra$flight = RoyalFlightMotion.State.begin(king.getYRot(), position.y);
