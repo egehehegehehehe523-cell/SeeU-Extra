@@ -9,7 +9,7 @@ issueTrackerURL="https://github.com/cat4blep/SeeU-Extra/issues"
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"
-displayName="${mod_name}"
+displayName="${mod_name}"\nlogoFile="assets/seeu_extra/icon.png"
 displayURL="https://github.com/cat4blep/SeeU-Extra"
 authors="Keryesh4ka"
 description='''
