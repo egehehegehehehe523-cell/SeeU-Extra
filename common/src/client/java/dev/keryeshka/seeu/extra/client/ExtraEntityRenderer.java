@@ -40,6 +40,7 @@ public final class ExtraEntityRenderer {
     private static final Logger LOGGER = LoggerFactory.getLogger("SeeU Extra");
     private static final AtomicInteger NEXT_PROXY_ID = new AtomicInteger(1_100_000_000);
     private static final long PROXY_REUSE_NANOS = TimeUnit.MINUTES.toNanos(2);
+    private static final long ANIMATION_TICK_NANOS = TimeUnit.MILLISECONDS.toNanos(50);
 
     private final ExtraEntityTracker tracker;
     private final Map<UUID, ProxyEntry> proxies = new HashMap<>();
@@ -175,12 +176,16 @@ public final class ExtraEntityRenderer {
                     }
                     proxy.lastSeenFrame = currentFrame;
                     proxy.lastSeenNanos = now;
-                    // Use a monotonic client tick for the synthetic GeckoLib
-                    // entity; snapshot ages can be stale or arrive in bursts.
+                    // GeckoLib's native/proxy animation cache is shared by
+                    // royal adapters. Never use the PLAYER's tick count here:
+                    // a persistent boss may be years older than the player,
+                    // causing GeckoLib's animation clock to run backwards on
+                    // native/proxy transitions and freeze its flying loop.
                     // Inside ticking chunks use the real entity coordinates;
                     // distant snapshots can trail a charging boss by multiple
                     // blocks, otherwise misaligning the visible model and hitbox.
-                    applyPosition(proxy.entity, state, viewer.tickCount, liveNative);
+                    applyPosition(proxy.entity, state,
+                            proxy.animationTick(state.age(), liveNative, now), liveNative);
                     if (proxy.appliedRevision != state.revision()) {
                         applySnapshotState(proxy.entity, snapshot);
                         proxy.appliedRevision = state.revision();
@@ -479,6 +484,9 @@ public final class ExtraEntityRenderer {
         private final Entity entity;
         private final Object animationCache;
         private long appliedRevision = Long.MIN_VALUE;
+        private long animationClockNanos = Long.MIN_VALUE;
+        private long animationRemainderNanos;
+        private int animationAge;
         private long lastSeenFrame;
         private long lastSeenNanos;
 
@@ -487,6 +495,34 @@ public final class ExtraEntityRenderer {
             this.typeId = typeId;
             this.entity = entity;
             this.animationCache = animationCache;
+        }
+
+        /** A per-proxy, never-rewinding GeckoLib clock in the boss's own age domain. */
+        private int animationTick(int snapshotAge, Entity nativeEntity, long now) {
+            int authoritativeAge = Math.max(0, snapshotAge);
+            if (nativeEntity != null) {
+                authoritativeAge = Math.max(authoritativeAge, nativeEntity.tickCount);
+            }
+            if (animationClockNanos == Long.MIN_VALUE) {
+                animationClockNanos = now;
+                animationAge = authoritativeAge;
+                return animationAge;
+            }
+
+            // Continue advancing through packet gaps, even if the last
+            // received snapshot age is stale. Do not fast-forward minutes of
+            // model animation after a renderer has been out of view.
+            long elapsed = Math.max(0L, now - animationClockNanos);
+            long bounded = Math.min(elapsed, TimeUnit.SECONDS.toNanos(1));
+            long total = bounded + animationRemainderNanos;
+            long passedTicks = total / ANIMATION_TICK_NANOS;
+            animationRemainderNanos = total % ANIMATION_TICK_NANOS;
+            animationClockNanos = now;
+
+            long advanced = (long) animationAge + passedTicks;
+            animationAge = (int) Math.min(Integer.MAX_VALUE,
+                    Math.max(advanced, (long) authoritativeAge));
+            return animationAge;
         }
     }
 }
