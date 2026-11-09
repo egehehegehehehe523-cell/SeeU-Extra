@@ -84,6 +84,13 @@ with the installed NTM build.
 
 ## Persistent pursuit and King's Treason
 
+In `config/world-bosses-server.json`, `distantPursuitRangeChunks`
+controls how far **both** offloaded royals identify and chase players:
+default **64 chunks** (1024 blocks), minimum **0** (no distant pursuit,
+roaming continues), maximum **512** (8192 blocks). This does not affect
+server simulation / hitbox restoration, native combat, or the separately
+configured distant Decree and ambient beam strike ranges.
+
 - Native/offloaded transitions now retain the current target UUID whenever it is
   still targetable, avoiding unnecessary re-targeting just because a nearby
   chunk became entity-ticking. No extra chunk tickets or distant pathfinding.
