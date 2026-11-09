@@ -243,6 +243,7 @@ public final class PersistentRoyalFlight {
             // Treason stays with this one King when his live entity is
             // serialized out of simulation; do not reset on boundary crossing.
             data.treasonPoints = RoyalTreason.points(king);
+            data.attackCooldowns = RoyalAttackPersistence.capture(king);
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("Could not serialize King flight state; keeping the real King alive", failure);
             return;
@@ -253,6 +254,13 @@ public final class PersistentRoyalFlight {
             // If the live King has already issued a decree, its remaining
             // recovery must delay the distant version too.
             distantDecrees.inheritNativeCooldown(level, nativeCooldown);
+        }
+        // An already-fired centre beam must still explode when its
+        // original scheduled duration completes, even if its entity leaves
+        // Minecraft's entity-ticking area during the attack.
+        if (king instanceof RoyalPendingBeamAccess beamAccess) {
+            PendingRoyalBeams.schedule(level, king,
+                    beamAccess.worldbosses$capturePendingBeam(), typeId);
         }
         lastLiveBoss.remove(level);
         // Preserve the same pursuit target during native -> logical handoff
@@ -316,8 +324,11 @@ public final class PersistentRoyalFlight {
             }
         }
 
-        // Only these four player-state decrees run without the real entity.
-        // Combat decrees, attacks and summons always wait for native AI.
+        // All existing cooldowns continue to count down in the offloaded
+        // world-state, instead of being reset by the next entity spawn.
+        RoyalAttackPersistence.tick(data.attackCooldowns);
+        // Only four player-state decrees run without the real entity.
+        // New combat attacks/summons still require native simulation.
         if (distantDecrees != null) {
             distantDecrees.tick(level, data.x, data.y, data.z, data::awardTreason);
         }
@@ -408,6 +419,7 @@ public final class PersistentRoyalFlight {
         king.setDeltaMovement(state.vx, state.vy, state.vz);
         king.tickCount = state.age;
         RoyalTreason.set(king, state.treasonPoints);
+        RoyalAttackPersistence.restore(king, state.attackCooldowns);
         king.hasImpulse = true;
         // Deserialization restores original health, Antarchy data and UUID.
         if (!level.addFreshEntity(king)) {
@@ -532,6 +544,7 @@ public final class PersistentRoyalFlight {
         private RoyalFlightMotion.State flight = RoyalFlightMotion.State.begin(0.0F, 0.0D);
         private int age;
         private int treasonPoints;
+        private CompoundTag attackCooldowns = new CompoundTag();
         private float healthFraction = 1.0F;
 
         private void awardTreason() {
@@ -588,6 +601,7 @@ public final class PersistentRoyalFlight {
                         tag.getDouble("WanderRise"), tag.getDouble("WanderAltitude"));
                 result.age = tag.getInt("Age");
                 result.treasonPoints = Math.max(0, tag.getInt("Treason"));
+                result.attackCooldowns = tag.getCompound("RoyalAttackCooldowns");
                 result.healthFraction = tag.contains("HealthFraction")
                         ? Mth.clamp(tag.getFloat("HealthFraction"), 0.0F, 1.0F) : 1.0F;
                 result.offloaded = !result.entityTag.isEmpty()
@@ -615,6 +629,7 @@ public final class PersistentRoyalFlight {
                 tag.putInt("WanderTicks", flight.remaining());
                 tag.putInt("Age", age);
                 tag.putInt("Treason", treasonPoints);
+                tag.put("RoyalAttackCooldowns", attackCooldowns.copy());
                 tag.putFloat("HealthFraction", healthFraction);
             }
             return tag;
