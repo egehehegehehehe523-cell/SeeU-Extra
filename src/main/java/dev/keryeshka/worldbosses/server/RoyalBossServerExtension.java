@@ -34,6 +34,7 @@ public final class RoyalBossServerExtension implements DistantEntityServerHooks.
     @Override public void tick(MinecraftServer server) {
         if (types.contains(KING)) king.tick(server);
         if (types.contains(QUEEN)) queen.tick(server);
+        PendingRoyalBeams.tickAll(server);
     }
     @Override public void updateBossBars(MinecraftServer server, ExtraServerSettings settings) {
         king.updateBossBars(server, settings);
