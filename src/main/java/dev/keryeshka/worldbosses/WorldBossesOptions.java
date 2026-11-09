@@ -11,6 +11,10 @@ public final class WorldBossesOptions {
     public boolean enableKing = true;
     public boolean enableQueen = true;
     public boolean distantKingDecrees = true;
+    // How far an offloaded King/Queen notices and pursues a survival player.
+    // 0 = no distant pursuit (idle wander continues); default 64 chunks.
+    // This does NOT affect native hitboxes, combat activation or Decree range.
+    public int distantPursuitRangeChunks = 64;
     public boolean kingIdleWanderFallback = true;
     public boolean queenIdleWanderFallback = true;
     public boolean kingGlobalRoam = true;
@@ -79,6 +83,8 @@ public final class WorldBossesOptions {
                     MAX_KING_NUCLEAR_STRENGTH, options.kingNuclearStrength));
             options.queenBalefireStrength = Math.max(1, Math.min(
                     MAX_QUEEN_BALEFIRE_STRENGTH, options.queenBalefireStrength));
+            options.distantPursuitRangeChunks = Math.max(0,
+                    Math.min(512, options.distantPursuitRangeChunks));
             options.kingDistantBeamCooldownTicks = Math.max(600,
                     Math.min(72000, options.kingDistantBeamCooldownTicks));
             options.queenDistantBeamCooldownTicks = Math.max(600,
