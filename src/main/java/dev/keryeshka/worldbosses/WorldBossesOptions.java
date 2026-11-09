@@ -31,6 +31,19 @@ public final class WorldBossesOptions {
     public int queenBlackHoleLifetimeTicks = 100;
     public boolean royalHbmImmunity = true;
 
+    // Rare Godzilla-style ground strikes while the boss is in persistent
+    // distant-flight mode. Uses the existing King nuclear / Queen Balefire
+    // strengths, not a second explosion implementation.
+    public boolean distantGroundBeamStrikes = true;
+    public int kingDistantBeamCooldownTicks = 3600;   // at least 3 min
+    public int queenDistantBeamCooldownTicks = 3600;
+    public int distantGroundBeamDurationTicks = 45;   // visible beam before blast
+    public int distantGroundBeamMinimumRange = 48;
+    public int distantGroundBeamMaximumRange = 160;
+    public int distantGroundBeamMinimumPlayerDistance = 48;
+    public int distantGroundBeamViewerRange = 2048;   // 128 chunks
+
+
     public static volatile boolean kingWander = true;
     public static volatile boolean queenWander = true;
     public static volatile boolean kingRoam = true;
@@ -66,6 +79,21 @@ public final class WorldBossesOptions {
                     MAX_KING_NUCLEAR_STRENGTH, options.kingNuclearStrength));
             options.queenBalefireStrength = Math.max(1, Math.min(
                     MAX_QUEEN_BALEFIRE_STRENGTH, options.queenBalefireStrength));
+            options.kingDistantBeamCooldownTicks = Math.max(600,
+                    Math.min(72000, options.kingDistantBeamCooldownTicks));
+            options.queenDistantBeamCooldownTicks = Math.max(600,
+                    Math.min(72000, options.queenDistantBeamCooldownTicks));
+            options.distantGroundBeamDurationTicks = Math.max(10,
+                    Math.min(200, options.distantGroundBeamDurationTicks));
+            options.distantGroundBeamMinimumRange = Math.max(16,
+                    Math.min(512, options.distantGroundBeamMinimumRange));
+            options.distantGroundBeamMaximumRange = Math.max(
+                    options.distantGroundBeamMinimumRange,
+                    Math.min(512, options.distantGroundBeamMaximumRange));
+            options.distantGroundBeamMinimumPlayerDistance = Math.max(0,
+                    Math.min(256, options.distantGroundBeamMinimumPlayerDistance));
+            options.distantGroundBeamViewerRange = Math.max(128,
+                    Math.min(4096, options.distantGroundBeamViewerRange));
             kingWander = options.kingIdleWanderFallback;
             queenWander = options.queenIdleWanderFallback;
             kingRoam = options.kingGlobalRoam;
