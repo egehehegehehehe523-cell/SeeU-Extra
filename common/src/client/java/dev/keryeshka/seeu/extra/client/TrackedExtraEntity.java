@@ -88,20 +88,10 @@ final class TrackedExtraEntity {
 
     private void updateWindows(int updateIntervalTicks) {
         long intervalNanos = (long) updateIntervalTicks * NANOS_PER_TICK;
-        // The King is frequently steered by World Bosses' global-roam AI,
-        // whereas the Queen normally follows her native patrol. The generic
-        // 50–100ms correction rapidly snaps the King's rendered pose whenever
-        // an authoritative distant snapshot arrives, appearing like low-FPS
-        // movement even though their GeckoLib fly clips are identical.
-        // Spread only the King's correction over a full snapshot interval
-        // (bounded to 250ms). All other entities retain the previous tuning.
-        if ("antarchy:king".equals(snapshot.typeId())) {
-            correctionWindowNanos = Math.max(MIN_CORRECTION_NANOS,
-                    Math.min(intervalNanos, TimeUnit.MILLISECONDS.toNanos(250)));
-        } else {
-            correctionWindowNanos = Math.max(MIN_CORRECTION_NANOS,
-                    Math.min(intervalNanos / 2, MAX_CORRECTION_NANOS));
-        }
+        correctionWindowNanos = Math.max(
+                MIN_CORRECTION_NANOS,
+                Math.min(intervalNanos / 2, MAX_CORRECTION_NANOS)
+        );
         extrapolationLimitNanos = Math.max(MIN_EXTRAPOLATION_NANOS, intervalNanos + intervalNanos / 2);
     }
 
