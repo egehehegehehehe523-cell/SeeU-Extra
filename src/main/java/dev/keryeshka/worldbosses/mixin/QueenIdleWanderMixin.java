@@ -38,6 +38,8 @@ public abstract class QueenIdleWanderMixin implements RoyalFlightSteeringAccess 
     @Unique private int seeuExtra$stationaryTicks;
     @Unique private boolean seeuExtra$steering;
     @Unique private int seeuExtra$recoveryTicks;
+    // Keep the last combat heading instead of resuming an old patrol bearing.
+    @Unique private boolean seeuExtra$wasFighting;
 
     /**
      * The persistent-flight Queen must have exactly one idle-flight controller.
@@ -48,6 +50,9 @@ public abstract class QueenIdleWanderMixin implements RoyalFlightSteeringAccess 
     @Inject(method = "tick", at = @At("HEAD"), remap = false, require = 0)
     private void seeuExtra$beginIdleFlight(CallbackInfo ci) {
         Mob queen = (Mob) (Object) this;
+        if (queen.getTarget() != null) {
+            seeuExtra$wasFighting = true;
+        }
         if (!WorldBossesOptions.queenRoam || !(queen.level() instanceof ServerLevel)
                 || !queen.isAlive() || queen.isNoAi() || queen.getTarget() != null
                 || (queen instanceof dev.keryeshka.worldbosses.client.RoyalFlyingVisualAccess flying
@@ -63,6 +68,9 @@ public abstract class QueenIdleWanderMixin implements RoyalFlightSteeringAccess 
     @Inject(method = "tick", at = @At("TAIL"), remap = false, require = 0)
     private void seeuExtra$directionalIdleFlight(CallbackInfo ci) {
         Mob queen = (Mob) (Object) this;
+        if (queen.getTarget() != null) {
+            seeuExtra$wasFighting = true;
+        }
         if (!(queen.level() instanceof ServerLevel level) || !queen.isAlive()
                 || queen.isNoAi() || queen.getTarget() != null
                 || (!WorldBossesOptions.queenRoam && !WorldBossesOptions.queenWander)
@@ -73,6 +81,15 @@ public abstract class QueenIdleWanderMixin implements RoyalFlightSteeringAccess 
         }
 
         Vec3 position = queen.position();
+        if (seeuExtra$wasFighting) {
+            // Antarchy owns all facing during combat. When it releases the
+            // target, discard the old wandering bearing rather than turning
+            // back toward a heading saved before the fight.
+            if (seeuExtra$flight != null) {
+                seeuExtra$flight.aimAt(queen.getYRot(), position.y);
+            }
+            seeuExtra$wasFighting = false;
+        }
         if (WorldBossesOptions.queenRoam) {
             if (seeuExtra$flight == null) {
                 seeuExtra$flight = RoyalFlightMotion.State.begin(queen.getYRot(), position.y);
