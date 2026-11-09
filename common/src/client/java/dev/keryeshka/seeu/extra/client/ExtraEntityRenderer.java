@@ -15,6 +15,7 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -184,7 +185,8 @@ public final class ExtraEntityRenderer {
                     // distant snapshots can trail a charging boss by multiple
                     // blocks, otherwise misaligning the visible model and hitbox.
                     applyPosition(proxy.entity, state,
-                            proxy.animationTick(state.age(), liveNative, level.getGameTime()), liveNative);
+                            proxy.animationTick(state.age(), liveNative, level.getGameTime()),
+                            liveNative, partialTick);
                     if (proxy.appliedRevision != state.revision()) {
                         applySnapshotState(proxy.entity, snapshot);
                         proxy.appliedRevision = state.revision();
@@ -201,8 +203,12 @@ public final class ExtraEntityRenderer {
                     // controller here without affecting ordinary entities.
                     if (adapter != null) adapter.proxyUpdated(proxy.entity, liveNative != null);
                     renderEntity = proxy.entity;
-                    position = liveNative != null ? liveNative.position() : state.position();
-                    renderYaw = liveNative != null ? liveNative.getYRot() : state.bodyYaw();
+                    // Native bosses update at 20 TPS; render their interpolated
+                    // position/orientation at this frame's partial tick. Using
+                    // raw native position/yaw made combat movement look like
+                    // stop-motion even at high client frame rates.
+                    position = liveNative != null ? liveNative.getPosition(partialTick) : state.position();
+                    renderYaw = proxy.entity.getYRot();
                 }
 
                 boolean frustumVisible = shouldRenderBeyondVanillaDistance(
@@ -387,13 +393,18 @@ public final class ExtraEntityRenderer {
     }
 
     private static void applyPosition(Entity entity, InterpolatedEntityState state,
-                                      int animationTick, Entity liveNative) {
-        Vec3 position = liveNative == null ? state.position() : liveNative.position();
+                                      int animationTick, Entity liveNative, float partialTick) {
+        Vec3 position = liveNative == null ? state.position() : liveNative.getPosition(partialTick);
         float bodyYaw = liveNative == null ? state.bodyYaw()
-                : liveNative instanceof LivingEntity living ? living.yBodyRot : liveNative.getYRot();
+                : liveNative instanceof LivingEntity living
+                    ? Mth.rotLerp(partialTick, living.yBodyRotO, living.yBodyRot)
+                    : Mth.rotLerp(partialTick, liveNative.yRotO, liveNative.getYRot());
         float headYaw = liveNative == null ? state.headYaw()
-                : liveNative instanceof LivingEntity living ? living.getYHeadRot() : liveNative.getYRot();
-        float pitch = liveNative == null ? state.pitch() : liveNative.getXRot();
+                : liveNative instanceof LivingEntity living
+                    ? Mth.rotLerp(partialTick, living.yHeadRotO, living.getYHeadRot())
+                    : Mth.rotLerp(partialTick, liveNative.yRotO, liveNative.getYRot());
+        float pitch = liveNative == null ? state.pitch()
+                : Mth.lerp(partialTick, liveNative.xRotO, liveNative.getXRot());
         entity.setOldPosAndRot();
         entity.xo = position.x;
         entity.yo = position.y;
