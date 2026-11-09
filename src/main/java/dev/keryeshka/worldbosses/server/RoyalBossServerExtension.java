@@ -21,9 +21,9 @@ public final class RoyalBossServerExtension implements DistantEntityServerHooks.
     public RoyalBossServerExtension(WorldBossesOptions settings) {
         // Retain the existing King's SavedData key for upgrade compatibility.
         king = new PersistentRoyalFlight(KING, "seeu_extra_persistent_king",
-                "king", BossEvent.BossBarColor.YELLOW, settings.enableKing, settings.distantKingDecrees);
+                "king", BossEvent.BossBarColor.YELLOW, settings.enableKing, settings.distantKingDecrees, settings);
         queen = new PersistentRoyalFlight(QUEEN, "world_bosses_persistent_queen",
-                "queen", BossEvent.BossBarColor.PURPLE, settings.enableQueen, false);
+                "queen", BossEvent.BossBarColor.PURPLE, settings.enableQueen, false, settings);
         var configured = new HashSet<String>();
         if (settings.enableKing) configured.add(KING);
         if (settings.enableQueen) configured.add(QUEEN);
