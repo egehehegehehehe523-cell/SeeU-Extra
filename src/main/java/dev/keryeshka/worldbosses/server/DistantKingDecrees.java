@@ -53,7 +53,7 @@ final class DistantKingDecrees {
 
     private final Map<ServerLevel, State> states = new IdentityHashMap<>();
 
-    void tick(ServerLevel level, double kingX, double kingY, double kingZ) {
+    void tick(ServerLevel level, double kingX, double kingY, double kingZ, Runnable awardTreason) {
         long now = level.getGameTime();
         List<ServerPlayer> nearby = new ArrayList<>();
         // A cheap player-only scan. Never searches blocks or chunks.
@@ -125,6 +125,9 @@ final class DistantKingDecrees {
                     && participantElapsed >= ANNOUNCEMENT_TICKS + RESPONSE_GRACE_TICKS) {
                 participant.violated = true;
                 punish(level, player);
+                // Identical one-point reward to Antarchy's native
+                // violateDecree path; the saved flight state owns the balance.
+                awardTreason.run();
             }
         }
 
