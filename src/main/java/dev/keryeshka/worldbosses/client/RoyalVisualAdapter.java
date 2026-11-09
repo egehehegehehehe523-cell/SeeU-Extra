@@ -23,6 +23,8 @@ public final class RoyalVisualAdapter implements DistantEntityVisualHooks.Adapte
     private static boolean usable = true;
     private boolean animationRecoveryUsable = true;
     private final Map<Entity, Long> lastAnimationRecoveryCheck = new WeakHashMap<>();
+    private final Map<Entity, Boolean> distantBeamApplied = new WeakHashMap<>();
+
 
     static {
         Object[] slots = {};
@@ -68,6 +70,7 @@ public final class RoyalVisualAdapter implements DistantEntityVisualHooks.Adapte
      * after native/offloaded entity tracking changes.
      */
     @Override public void proxyUpdated(Entity proxy, boolean nativePresent) {
+        syncDistantGroundBeam(proxy, nativePresent);
         if (!animationRecoveryUsable
                 || !(proxy instanceof RoyalFlyingVisualAccess flying)
                 || !flying.seeuExtra$isRoyalFlying()) return;
@@ -92,6 +95,41 @@ public final class RoyalVisualAdapter implements DistantEntityVisualHooks.Adapte
         } catch (ReflectiveOperationException | RuntimeException exception) {
             animationRecoveryUsable = false;
             LOGGER.warn("GeckoLib locomotion recovery unavailable for royal visual proxies", exception);
+        }
+    }
+
+    /**
+     * SeeU already draws Antarchy's textured beam whenever a centre-head
+     * endpoint is present on the synthetic boss. Reuse that exact renderer
+     * for remote nuclear strikes; no new shader pass or Voxy mixin.
+     */
+    private void syncDistantGroundBeam(Entity proxy, boolean nativePresent) {
+        if (!usable || SET_END == null || GET_END == null) return;
+        Object centre = null;
+        for (Object slot : SLOTS) {
+            if (slot instanceof Enum<?> named && "CENTER".equals(named.name())) {
+                centre = slot;
+                break;
+            }
+        }
+        if (centre == null) return;
+        Vec3 impact = RoyalStrikeClient.impact(proxy.getUUID());
+        try {
+            if (impact != null) {
+                // Native beams retain priority while the actual Antarchy
+                // entity is engaged; otherwise the persistent strike renders.
+                Vec3 nativeEndpoint = nativePresent
+                        ? (Vec3) GET_END.invoke(proxy, centre) : null;
+                if (nativeEndpoint == null || distantBeamApplied.containsKey(proxy)) {
+                    SET_END.invoke(proxy, centre, impact);
+                    distantBeamApplied.put(proxy, Boolean.TRUE);
+                }
+            } else if (distantBeamApplied.remove(proxy) != null && !nativePresent) {
+                SET_END.invoke(proxy, centre, (Object) null);
+            }
+        } catch (ReflectiveOperationException | RuntimeException failure) {
+            usable = false;
+            LOGGER.warn("Disabling distant royal beam endpoint rendering", failure);
         }
     }
 
