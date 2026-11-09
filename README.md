@@ -36,3 +36,38 @@ dependency can be replaced by a normal versioned `compileOnly` dependency.
 The resulting standalone JAR is `build/libs/world-bosses-neoforge-1.21.1-0.1.0.jar`. Do not install the pre-split SeeU Extra build at the same time as Continuation. Fabric is intentionally not included for this Antarchy-specific addon.
 
 No Antarchy source files are bundled or replaced; the mixins target Antarchy's own King/Queen renderer and entity classes.
+
+
+## Optional NTM: Continuum / HBM abilities
+
+When `hbm` is installed, World Bosses hooks Antarchy's existing attack
+scheduling without changing Antarchy, NTM, or Neo-Voxy source files.
+
+- **King centre-head beam:** fires normally with locked aim, then calls HBM's
+  real *nuclear* custom-nuke stage (default nuclear strength 150) once the beam
+  expires. This is not the conventional 150-TNT stage.
+- **Queen centre-head beam:** calls the real HBM *Balefire / antimatter* stage
+  (default strength 150) at the last beam hitpoint after its firing duration.
+- **Queen black hole:** keeps Antarchy's native telegraph, roar and particles;
+  replaces the thrown hole with HBM's field at the already selected impact
+  destination, grows to size 6.4 (96-block pull radius), and expires in 100
+  ticks by default. HBM still applies its configured dimension restrictions.
+- **Immunities:** both royals are marked `hbm:radiation_immune` and excluded
+  from HBM nuclear damage/knockback/fire and HBM black-hole pull/damage. Royal
+  bolts, elemental projectiles, ice spikes and other Antarchy projectiles,
+  Queen Manticores, and royal black-hole entities are exempt from the Queen's
+  HBM black-hole pull. Queen Manticores **are not immune to nuclear or
+  Balefire explosions**.
+- **Fallback:** without HBM, Antarchy's normal Queen black hole still works
+  and nuclear beam effects are disabled. HBM remains an **optional dependency**.
+
+Settings in `config/world-bosses-server.json`: `hbmAbilities`,
+`kingNuclearStrength`, `queenBalefireStrength`,
+`queenBlackHoleMaxSize`, `queenBlackHoleLifetimeTicks` and
+`royalHbmImmunity`. These explosions can destroy a very large area; test
+in a backed-up world. Existing Voxy snapshot/memory limits are unchanged.
+
+**Compatibility note:** HBM and Antarchy use separate source modules with no
+HBM build-time dependency here. The optional mixins are version-specific to
+NTM: Continuum and Antarchy 1.21.1 and require an in-game integration test
+with the installed NTM build.
