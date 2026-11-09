@@ -11,25 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: world
-      - uses: actions/checkout@v4
-        with:
-          ref: seeu-extra-continuation
-          path: seeu
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - name: Build SeeU Extra Continuation dependency
-        working-directory: seeu
-        run: chmod +x gradlew && ./gradlew --no-daemon :neoforge:build
       - name: Build World Bosses standalone JAR
-        working-directory: world
-        run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon -PseeuExtraJar="$GITHUB_WORKSPACE/seeu/neoforge/build/libs/seeu-extra-neoforge-1.21.1-0.3.0.jar" clean build
+        run: chmod +x gradlew && ./gradlew --no-daemon clean build
       - uses: actions/upload-artifact@v4
         with:
           name: world-bosses-neoforge
-          path: world/build/libs/world-bosses-neoforge-*.jar
+          path: build/libs/world-bosses-neoforge-*.jar

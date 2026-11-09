@@ -21,23 +21,21 @@ repositories {
     maven { url = 'https://maven.neoforged.net/releases' }
 }
 
-// The standalone addon compiles against SeeU Extra Continuation's *jar*.
-// It never packages SeeU's classes; both mods must be installed separately.
-def seeuExtraJar = file(providers.gradleProperty('seeuExtraJar')
-        .orElse('libs/seeu-extra-neoforge-1.21.1-0.3.0.jar').get())
-dependencies {
-    compileOnly files(seeuExtraJar)
+// These declarations are only the public API *signatures* of SeeU Extra 0.3.0.
+// They compile into a separate source set and are deliberately excluded from
+// the World Bosses mod JAR and its runtime classpath. SeeU Extra is still
+// required as a separate installed mod at runtime.
+sourceSets {
+    seeuApi
 }
-tasks.withType(JavaCompile).configureEach {
-    doFirst {
-        if (!seeuExtraJar.isFile()) throw new GradleException(
-                "SeeU Extra Continuation jar missing: ${seeuExtraJar}. " +
-                "Build branch seeu-extra-continuation first and pass -PseeuExtraJar=<path>.")
-    }
+dependencies {
+    compileOnly sourceSets.seeuApi.output
 }
 
 neoForge {
     version = project.neo_version
+    // Resolve Minecraft/NeoForge types for the isolated API signature source set.
+    addModdingDependenciesTo sourceSets.seeuApi
     runs {
         client { client() }
         server { server(); programArgument '--nogui' }
@@ -57,3 +55,19 @@ tasks.named('processResources', ProcessResources) {
 tasks.named('jar', Jar) {
     from(rootProject.file('LICENSE')) { into 'META-INF' }
 }
+
+// Assert at build time that compile-time API signatures never leak into the
+// installable JAR. The actual SeeU Extra classes must come from its own mod.
+tasks.register('verifyNoSeeUClasses') {
+    dependsOn tasks.named('jar')
+    doLast {
+        def builtJar = tasks.named('jar', Jar).get().archiveFile.get().asFile
+        def embedded = zipTree(builtJar).matching {
+            include 'dev/keryeshka/seeu/extra/**'
+        }.files
+        if (!embedded.isEmpty()) {
+            throw new GradleException("World Bosses must not package SeeU Extra classes: ${embedded}")
+        }
+    }
+}
+tasks.named('check') { dependsOn tasks.named('verifyNoSeeUClasses') }
