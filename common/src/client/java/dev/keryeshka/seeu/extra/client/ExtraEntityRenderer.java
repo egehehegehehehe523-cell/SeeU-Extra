@@ -40,7 +40,6 @@ public final class ExtraEntityRenderer {
     private static final Logger LOGGER = LoggerFactory.getLogger("SeeU Extra");
     private static final AtomicInteger NEXT_PROXY_ID = new AtomicInteger(1_100_000_000);
     private static final long PROXY_REUSE_NANOS = TimeUnit.MINUTES.toNanos(2);
-    private static final long ANIMATION_TICK_NANOS = TimeUnit.MILLISECONDS.toNanos(50);
 
     private final ExtraEntityTracker tracker;
     private final Map<UUID, ProxyEntry> proxies = new HashMap<>();
@@ -185,7 +184,7 @@ public final class ExtraEntityRenderer {
                     // distant snapshots can trail a charging boss by multiple
                     // blocks, otherwise misaligning the visible model and hitbox.
                     applyPosition(proxy.entity, state,
-                            proxy.animationTick(state.age(), liveNative, now), liveNative);
+                            proxy.animationTick(state.age(), liveNative, level.getGameTime()), liveNative);
                     if (proxy.appliedRevision != state.revision()) {
                         applySnapshotState(proxy.entity, snapshot);
                         proxy.appliedRevision = state.revision();
@@ -487,8 +486,9 @@ public final class ExtraEntityRenderer {
         private final Entity entity;
         private final Object animationCache;
         private long appliedRevision = Long.MIN_VALUE;
-        private long animationClockNanos = Long.MIN_VALUE;
-        private long animationRemainderNanos;
+        // This is in ClientLevel game ticks, not unaligned wall-clock time:
+        // GeckoLib adds vanilla render partialTick to entity.tickCount.
+        private long lastAnimationWorldTick = Long.MIN_VALUE;
         private int animationAge;
         private long lastSeenFrame;
         private long lastSeenNanos;
@@ -500,35 +500,36 @@ public final class ExtraEntityRenderer {
             this.animationCache = animationCache;
         }
 
-        /** A per-proxy, never-rewinding GeckoLib clock in the boss's own age domain. */
-        private int animationTick(int snapshotAge, Entity nativeEntity, long now) {
-            int authoritativeAge = Math.max(0, snapshotAge);
-            if (nativeEntity != null) {
-                authoritativeAge = Math.max(authoritativeAge, nativeEntity.tickCount);
-            }
-            if (animationClockNanos == Long.MIN_VALUE) {
-                animationClockNanos = now;
-                animationAge = authoritativeAge;
+        /**
+         * Keep the proxy's GeckoLib clock on Minecraft's own tick timeline.
+         * The old 50ms System.nanoTime timer was out of phase with the game's
+         * render partial tick. At high frame rates this made
+         * (entity.tickCount + partialTick) repeatedly jump forward/backward,
+         * producing visible stop-motion on both royal flying loops.
+         */
+        private int animationTick(int snapshotAge, Entity nativeEntity, long worldTick) {
+            if (lastAnimationWorldTick == Long.MIN_VALUE) {
+                // Anchor in the boss's original age domain so GeckoLib can
+                // hand the controller to the native entity without starting
+                // from a brand-new player-relative clock.
+                animationAge = Math.max(0, snapshotAge);
+                if (nativeEntity != null) {
+                    animationAge = Math.max(animationAge, nativeEntity.tickCount);
+                }
+                lastAnimationWorldTick = worldTick;
                 return animationAge;
             }
-
-            // Continue advancing through packet gaps, even if the last
-            // received snapshot age is stale. Do not fast-forward minutes of
-            // model animation after a renderer has been out of view.
-            long elapsed = Math.max(0L, now - animationClockNanos);
-            long bounded = Math.min(elapsed, TimeUnit.SECONDS.toNanos(1));
-            long total = bounded + animationRemainderNanos;
-            long passedTicks = total / ANIMATION_TICK_NANOS;
-            animationRemainderNanos = total % ANIMATION_TICK_NANOS;
-            animationClockNanos = now;
-
-            // GeckoLib owns controller timing once the proxy exists. Server
-            // snapshots, and a newly loaded native entity, may have a quite
-            // different tick epoch: jumping directly to their age causes
-            // controller time discontinuities (including T-poses). Seed from
-            // the snapshot only at creation, then advance steadily here.
-            long advanced = (long) animationAge + passedTicks;
-            animationAge = (int) Math.min(Integer.MAX_VALUE, advanced);
+            if (worldTick < lastAnimationWorldTick) {
+                // Preserve monotonicity on an unusual clock reset.
+                lastAnimationWorldTick = worldTick;
+                return animationAge;
+            }
+            long delta = worldTick - lastAnimationWorldTick;
+            lastAnimationWorldTick = worldTick;
+            // Avoid a giant GeckoLib seek if the proxy was temporarily out
+            // of view. Normal render frames advance exactly 0 or 1 game tick.
+            animationAge = (int) Math.min(Integer.MAX_VALUE,
+                    (long) animationAge + Math.min(20L, delta));
             return animationAge;
         }
     }
