@@ -240,6 +240,9 @@ public final class PersistentRoyalFlight {
                     ? access.seeuExtra$flightState() : null;
             data.capture(entityTag, base,
                     king.getHealth() / Math.max(1.0F, king.getMaxHealth()), heading);
+            // Treason stays with this one King when his live entity is
+            // serialized out of simulation; do not reset on boundary crossing.
+            data.treasonPoints = RoyalTreason.points(king);
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("Could not serialize King flight state; keeping the real King alive", failure);
             return;
@@ -308,7 +311,7 @@ public final class PersistentRoyalFlight {
         // Only these four player-state decrees run without the real entity.
         // Combat decrees, attacks and summons always wait for native AI.
         if (distantDecrees != null) {
-            distantDecrees.tick(level, data.x, data.y, data.z);
+            distantDecrees.tick(level, data.x, data.y, data.z, data::awardTreason);
         }
         playDistantAmbient(level, data);
 
@@ -396,6 +399,7 @@ public final class PersistentRoyalFlight {
         }
         king.setDeltaMovement(state.vx, state.vy, state.vz);
         king.tickCount = state.age;
+        RoyalTreason.set(king, state.treasonPoints);
         king.hasImpulse = true;
         // Deserialization restores original health, Antarchy data and UUID.
         if (!level.addFreshEntity(king)) {
@@ -510,7 +514,15 @@ public final class PersistentRoyalFlight {
         private float yaw;
         private RoyalFlightMotion.State flight = RoyalFlightMotion.State.begin(0.0F, 0.0D);
         private int age;
+        private int treasonPoints;
         private float healthFraction = 1.0F;
+
+        private void awardTreason() {
+            if (treasonPoints < Integer.MAX_VALUE) {
+                treasonPoints++;
+                setDirty();
+            }
+        }
 
         private void capture(CompoundTag serialized, EntitySnapshot initial, float healthFraction,
                 RoyalFlightMotion.State flightState) {
@@ -558,6 +570,7 @@ public final class PersistentRoyalFlight {
                         tag.getFloat("WanderYaw"), tag.getInt("WanderTicks"),
                         tag.getDouble("WanderRise"), tag.getDouble("WanderAltitude"));
                 result.age = tag.getInt("Age");
+                result.treasonPoints = Math.max(0, tag.getInt("Treason"));
                 result.healthFraction = tag.contains("HealthFraction")
                         ? Mth.clamp(tag.getFloat("HealthFraction"), 0.0F, 1.0F) : 1.0F;
                 result.offloaded = !result.entityTag.isEmpty()
@@ -584,6 +597,7 @@ public final class PersistentRoyalFlight {
                 tag.putDouble("WanderAltitude", flight.altitude());
                 tag.putInt("WanderTicks", flight.remaining());
                 tag.putInt("Age", age);
+                tag.putInt("Treason", treasonPoints);
                 tag.putFloat("HealthFraction", healthFraction);
             }
             return tag;
