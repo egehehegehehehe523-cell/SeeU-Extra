@@ -113,3 +113,41 @@ The client interpolates the anchored model every rendered frame while the
 server retains authority over the player's collision box, damage, camera
 behavior, and guaranteed release on interruption. A player should never be
 teleported to raw 20-TPS bone positions to accomplish visual attachment.
+
+
+## Authoritative royal combat stats and offloaded attacks
+
+World Bosses now owns a dedicated `config/world-bosses-royal-stats.json`
+containing the complete 72-setting Antarchy `[royalBosses]` profile:
+health, damage, ranges, bite/beam timings, Decree and royal-muster cooldowns,
+King elemental cooldowns, Queen black-hole settings, multiplayer scaling,
+and Glimmer multipliers. On the **first** launch the addon copies the
+`[royalBosses]` values from `config/antarchy_mobs.toml`, when present.
+From then on, edit **only** `world-bosses-royal-stats.json` for royal stats.
+Antarchy's original TOML is not modified; AntarchySettings getter hooks
+make World Bosses authoritative even if the original config is reloaded.
+Restart the game/server after changing the World Bosses stat file. HBM
+nuclear/Balefire strength and black-hole lifetime remain in the separate
+`world-bosses-server.json`.
+
+**Persistence:** Offloading King or Queen now snapshots both the Antarchy
+RoyalAttackScheduler cooldown map and private per-boss integer cooldown
+counters. Cooldowns continue ticking while the boss exists only as its
+dimension-wide saved flight state and are restored on native activation.
+This prevents the attack timers from resetting at the tracking boundary.
+
+**In-flight beam:** If a centre-head HBM nuclear/Balefire beam has already
+started when the boss offloads, the addon stores its final impact and
+remaining firing ticks as a dimension SavedData event, which still detonates
+at the scheduled time regardless of whether the native boss is loaded.
+This preserves the pending blast through reactivation and world reload.
+This is a *partial* attack continuation: remote beam geometry, per-tick
+beam damage, active animation callbacks, and other active scripted actions
+are not yet simulated independently of the native entity. Extending the
+single persistent flight/attack director will be needed for full parity
+without switching states. No chunk tickets or Voxy queue changes are added.
+
+Treason grab animations remain a separate future feature. Attach a
+`grab_anchor_right` model bone to the King's grabbing hand and provide
+the updated model and animation files before implementing bone-followed
+player visuals and server-authoritative grabs.
