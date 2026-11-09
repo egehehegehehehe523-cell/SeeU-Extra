@@ -430,7 +430,7 @@ public final class PersistentRoyalFlight {
             return;
         }
         if (DistantRoyalStrikes.schedule(level, data.base.uuid(), typeId,
-                data.x, data.y, data.z, data.yaw, settings)) {
+                data.x, data.z, data.yaw, settings)) {
             int normalBeamCooldown = RoyalStatOverrides.intStat(
                     "antarchy:queen".equals(typeId)
                             ? "queenBeamCooldownTicks" : "kingBeamCooldownTicks", 90);
