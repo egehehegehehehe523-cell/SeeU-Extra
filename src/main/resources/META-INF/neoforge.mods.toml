@@ -41,3 +41,11 @@ handoff, global health bars and GeckoLib/Voxy visuals through SeeU Extra.
     versionRange="[2.3.0,)"
     ordering="AFTER"
     side="BOTH"
+
+# HBM abilities only activate when NTM: Continuum is installed.
+[[dependencies.world_bosses]]
+    modId="hbm"
+    type="optional"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
