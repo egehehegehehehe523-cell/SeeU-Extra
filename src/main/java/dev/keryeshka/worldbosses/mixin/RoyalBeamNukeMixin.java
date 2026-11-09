@@ -1,6 +1,7 @@
 package dev.keryeshka.worldbosses.mixin;
 
 import dev.keryeshka.worldbosses.server.RoyalHbmCompat;
+import dev.keryeshka.worldbosses.server.RoyalPendingBeamAccess;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
@@ -19,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Pseudo
 @Mixin(targets = "com.craisinlord.antarchy.content.entity.royal.RoyalBossEntity", remap = false)
-public abstract class RoyalBeamNukeMixin {
+public abstract class RoyalBeamNukeMixin implements RoyalPendingBeamAccess {
     @Unique private Vec3 worldbosses$centerHit;
     @Unique private int worldbosses$firstBeamTick = -1;
     @Unique private int worldbosses$lastBeamTick = -1;
@@ -51,6 +52,19 @@ public abstract class RoyalBeamNukeMixin {
         worldbosses$centerHit = null;
         worldbosses$firstBeamTick = -1;
         worldbosses$lastBeamTick = -1;
+    }
+
+    @Override
+    public ContinuedBeam worldbosses$capturePendingBeam() {
+        Entity royal = (Entity) (Object) this;
+        if (!(royal.level() instanceof ServerLevel)
+                || !RoyalHbmCompat.hbmAbilitiesReady()
+                || worldbosses$centerHit == null
+                || worldbosses$firstBeamTick < 0
+                || royal.tickCount - worldbosses$lastBeamTick > 2) return null;
+        int elapsed = Math.max(0, royal.tickCount - worldbosses$firstBeamTick);
+        int remaining = Math.max(1, worldbosses$expectedBeamTicks(royal) - elapsed);
+        return new ContinuedBeam(worldbosses$centerHit, remaining);
     }
 
     @Unique
