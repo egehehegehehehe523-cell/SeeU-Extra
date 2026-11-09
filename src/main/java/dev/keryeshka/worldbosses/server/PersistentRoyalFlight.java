@@ -1,5 +1,6 @@
 package dev.keryeshka.worldbosses.server;
 
+import dev.keryeshka.worldbosses.WorldBossesOptions;
 import dev.keryeshka.seeu.extra.config.ExtraServerSettings;
 import dev.keryeshka.seeu.extra.protocol.EntitySnapshot;
 import dev.keryeshka.seeu.extra.protocol.EntitySnapshotPacket;
@@ -48,6 +49,7 @@ public final class PersistentRoyalFlight {
     private static final double MAX_VERTICAL_SPEED = RoyalFlightMotion.MAX_VERTICAL_SPEED;
     private static final double WORLD_EDGE = RoyalFlightMotion.WORLD_EDGE;
     private final boolean enabled;
+    private final WorldBossesOptions settings;
     private final String typeId;
     private final String dataName;
     private final ResourceLocation flySound, roarSound;
@@ -60,7 +62,8 @@ public final class PersistentRoyalFlight {
 
     public PersistentRoyalFlight(String typeId, String dataName, String soundPrefix,
                                  BossEvent.BossBarColor barColor, boolean enabled,
-                                 boolean allowDistantDecrees) {
+                                 boolean allowDistantDecrees, WorldBossesOptions settings) {
+        this.settings = settings;
         this.typeId = typeId;
         this.dataName = dataName;
         this.barColor = barColor;
@@ -244,6 +247,12 @@ public final class PersistentRoyalFlight {
             // serialized out of simulation; do not reset on boundary crossing.
             data.treasonPoints = RoyalTreason.points(king);
             data.attackCooldowns = RoyalAttackPersistence.capture(king);
+            // Random distant attacks do not start immediately on every
+            // native/offloaded boundary crossing.
+            long now = level.getGameTime();
+            if (data.nextGroundStrikeTick <= now) {
+                data.nextGroundStrikeTick = DistantRoyalStrikes.nextCooldown(now, settings, typeId);
+            }
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("Could not serialize King flight state; keeping the real King alive", failure);
             return;
@@ -327,6 +336,7 @@ public final class PersistentRoyalFlight {
         // All existing cooldowns continue to count down in the offloaded
         // world-state, instead of being reset by the next entity spawn.
         RoyalAttackPersistence.tick(data.attackCooldowns);
+        tickDistantGroundStrike(level, data);
         // Only four player-state decrees run without the real entity.
         // New combat attacks/summons still require native simulation.
         if (distantDecrees != null) {
@@ -369,6 +379,48 @@ public final class PersistentRoyalFlight {
         if (level.getGameTime() % 20L == 0L) {
             data.setDirty();
         }
+    }
+
+    /**
+     * One occasional downwards centre-beam shot while flying in LODs.
+     * The scheduler is not the native mob's AI, so the deadline survives
+     * offload/reload/restoration and never asks Minecraft to tick its chunks.
+     */
+    private void tickDistantGroundStrike(ServerLevel level, RoyalData data) {
+        if (!settings.distantGroundBeamStrikes || !RoyalHbmCompat.hbmAbilitiesReady()
+                || data.base == null) return;
+        long now = level.getGameTime();
+        if (data.nextGroundStrikeTick <= 0L) {
+            data.nextGroundStrikeTick = DistantRoyalStrikes.nextCooldown(now, settings, typeId);
+            data.setDirty();
+            return;
+        }
+        if (now < data.nextGroundStrikeTick) return;
+        double range = settings.distantGroundBeamViewerRange;
+        if (nearestPresentPlayer(level, data.x, data.z, range * range) == null) {
+            data.nextGroundStrikeTick = now + 200L;
+            data.setDirty();
+            return;
+        }
+        CompoundTag scheduler = data.attackCooldowns.getCompound("Scheduler");
+        if (scheduler.getInt("beam_CENTER") > 0 || PendingRoyalBeams.hasPending(level, data.base.uuid())) {
+            data.nextGroundStrikeTick = now + 100L;
+            data.setDirty();
+            return;
+        }
+        if (DistantRoyalStrikes.schedule(level, data.base.uuid(), typeId,
+                data.x, data.y, data.z, data.yaw, settings)) {
+            int normalBeamCooldown = RoyalStatOverrides.intStat(
+                    "antarchy:queen".equals(typeId)
+                            ? "queenBeamCooldownTicks" : "kingBeamCooldownTicks", 90);
+            scheduler.putInt("beam_CENTER", Math.max(1, normalBeamCooldown));
+            data.nextGroundStrikeTick = DistantRoyalStrikes.nextCooldown(now, settings, typeId);
+        } else {
+            // If the terrain is taller than the royal or a height query
+            // fails, retry only every 10 seconds, not every tick.
+            data.nextGroundStrikeTick = now + 200L;
+        }
+        data.setDirty();
     }
 
     private static boolean withinActivationDistance(
@@ -544,6 +596,7 @@ public final class PersistentRoyalFlight {
         private RoyalFlightMotion.State flight = RoyalFlightMotion.State.begin(0.0F, 0.0D);
         private int age;
         private int treasonPoints;
+        private long nextGroundStrikeTick;
         private CompoundTag attackCooldowns = new CompoundTag();
         private float healthFraction = 1.0F;
 
@@ -602,6 +655,7 @@ public final class PersistentRoyalFlight {
                 result.age = tag.getInt("Age");
                 result.treasonPoints = Math.max(0, tag.getInt("Treason"));
                 result.attackCooldowns = tag.getCompound("RoyalAttackCooldowns");
+                result.nextGroundStrikeTick = Math.max(0L, tag.getLong("NextGroundStrike"));
                 result.healthFraction = tag.contains("HealthFraction")
                         ? Mth.clamp(tag.getFloat("HealthFraction"), 0.0F, 1.0F) : 1.0F;
                 result.offloaded = !result.entityTag.isEmpty()
@@ -630,6 +684,7 @@ public final class PersistentRoyalFlight {
                 tag.putInt("Age", age);
                 tag.putInt("Treason", treasonPoints);
                 tag.put("RoyalAttackCooldowns", attackCooldowns.copy());
+                tag.putLong("NextGroundStrike", nextGroundStrikeTick);
                 tag.putFloat("HealthFraction", healthFraction);
             }
             return tag;
