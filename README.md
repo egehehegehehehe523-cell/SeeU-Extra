@@ -67,6 +67,12 @@ Settings in `config/world-bosses-server.json`: `hbmAbilities`,
 `royalHbmImmunity`. These explosions can destroy a very large area; test
 in a backed-up world. Existing Voxy snapshot/memory limits are unchanged.
 
+Existing 150-strength config values migrate to 16 (King nuclear) and 12 (Queen Balefire)
+automatically. Custom strengths are limited to 24 and 18 respectively, even
+if an old config or another mod supplies a higher value. This limits the
+actual HBM crater radius rather than reducing visual effects or merely
+increasing cooldowns.
+
 **Compatibility note:** HBM and Antarchy use separate source modules with no
 HBM build-time dependency here. The optional mixins are version-specific to
 NTM: Continuum and Antarchy 1.21.1 and require an in-game integration test
