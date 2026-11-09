@@ -198,6 +198,9 @@ public final class ExtraEntityRenderer {
                         if (adapter != null) adapter.detached(proxy.entity);
                         proxy.nativeStatePresent = false;
                     }
+                    // An adapter may restore a stalled GeckoLib locomotion
+                    // controller here without affecting ordinary entities.
+                    if (adapter != null) adapter.proxyUpdated(proxy.entity, liveNative != null);
                     renderEntity = proxy.entity;
                     position = liveNative != null ? liveNative.position() : state.position();
                     renderYaw = liveNative != null ? liveNative.getYRot() : state.bodyYaw();
@@ -519,9 +522,13 @@ public final class ExtraEntityRenderer {
             animationRemainderNanos = total % ANIMATION_TICK_NANOS;
             animationClockNanos = now;
 
+            // GeckoLib owns controller timing once the proxy exists. Server
+            // snapshots, and a newly loaded native entity, may have a quite
+            // different tick epoch: jumping directly to their age causes
+            // controller time discontinuities (including T-poses). Seed from
+            // the snapshot only at creation, then advance steadily here.
             long advanced = (long) animationAge + passedTicks;
-            animationAge = (int) Math.min(Integer.MAX_VALUE,
-                    Math.max(advanced, (long) authoritativeAge));
+            animationAge = (int) Math.min(Integer.MAX_VALUE, advanced);
             return animationAge;
         }
     }
