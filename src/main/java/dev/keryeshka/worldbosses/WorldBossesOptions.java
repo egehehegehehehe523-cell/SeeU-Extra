@@ -16,6 +16,13 @@ public final class WorldBossesOptions {
     public boolean kingGlobalRoam = true;
     public boolean queenGlobalRoam = false;
     public boolean globalBossBars = true;
+    // Optional HBM integration; the addon keeps native abilities if HBM is absent.
+    public boolean hbmAbilities = true;
+    public int kingNuclearStrength = 150;
+    public int queenBalefireStrength = 150;
+    public float queenBlackHoleMaxSize = 6.4F; // HBM pull radius = size * 15
+    public int queenBlackHoleLifetimeTicks = 100;
+    public boolean royalHbmImmunity = true;
 
     public static volatile boolean kingWander = true;
     public static volatile boolean queenWander = true;
