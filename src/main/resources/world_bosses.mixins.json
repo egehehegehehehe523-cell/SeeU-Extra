@@ -7,7 +7,11 @@
     "KingIdleWanderMixin",
     "QueenIdleWanderMixin",
     "KingDecreeCooldownMixin",
-    "RoyalGlobalBossBarMixin"
+    "RoyalGlobalBossBarMixin",
+    "RoyalBeamNukeMixin",
+    "QueenHbmBlackHoleMixin",
+    "HbmBlackHoleMixin",
+    "HbmNuclearBlastMixin"
   ],
   "client": [
     "RoyalAnimationCacheMixin",
