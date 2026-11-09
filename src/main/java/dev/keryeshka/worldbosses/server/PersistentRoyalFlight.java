@@ -381,6 +381,14 @@ public final class PersistentRoyalFlight {
         }
 
         king.moveTo(state.x, state.y, state.z, state.yaw, state.base.pitch());
+        // NBT predates offloaded flight: its body/head and previous-frame
+        // rotations are stale. Align the full pose before client interpolation
+        // or Antarchy's native combat AI starts turning the real boss.
+        king.setYBodyRot(state.yaw);
+        king.setYHeadRot(state.yaw);
+        king.yRotO = state.yaw;
+        king.yBodyRotO = state.yaw;
+        king.yHeadRotO = state.yaw;
         if (king instanceof RoyalFlightSteeringAccess access) {
             access.seeuExtra$restoreFlightState(state.flight);
         }
