@@ -402,6 +402,12 @@ public final class PersistentRoyalFlight {
             data.setDirty();
             return;
         }
+        // Old worlds can contain an offloaded boss from before scheduler
+        // snapshots existed. Reattach the scheduler section explicitly so
+        // its new ambient-beam cooldown persists on the next save.
+        if (!data.attackCooldowns.contains("Scheduler")) {
+            data.attackCooldowns.put("Scheduler", new CompoundTag());
+        }
         CompoundTag scheduler = data.attackCooldowns.getCompound("Scheduler");
         if (scheduler.getInt("beam_CENTER") > 0 || PendingRoyalBeams.hasPending(level, data.base.uuid())) {
             data.nextGroundStrikeTick = now + 100L;
